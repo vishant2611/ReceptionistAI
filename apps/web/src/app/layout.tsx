@@ -1,5 +1,16 @@
 import type { Metadata } from "next";
+import { Manrope, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
+
+const headingFont = Manrope({
+  subsets: ["latin"],
+  variable: "--font-heading",
+});
+
+const bodyFont = Source_Sans_3({
+  subsets: ["latin"],
+  variable: "--font-body",
+});
 
 export const metadata: Metadata = {
   title: "Receptionist AI",
@@ -13,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={`${headingFont.variable} ${bodyFont.variable}`}>{children}</body>
     </html>
   );
 }

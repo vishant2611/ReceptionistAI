@@ -1,153 +1,111 @@
-const highlights = [
-  "Control when AI answers: all calls, after-hours, or after missed rings.",
-  "Configure custom greetings, voice selection, and industry-specific call behavior.",
-  "Track call logs, transcripts, recordings, bookings, and billing in one portal.",
-];
+import Link from "next/link";
+import { SiteHeader } from "../components/site-header";
 
 const pillars = [
   {
     title: "Business Portal",
-    body: "Responsive setup and management experience for desktop, laptop, tablet, and mobile.",
+    body: "Clean onboarding, call records, staff access, billing, and business settings in one focused system.",
   },
   {
-    title: "AI Call Control",
-    body: "Answering rules, call summaries, recordings, and future calendar-based booking flows.",
+    title: "AI Call Intelligence",
+    body: "Answering conditions, greetings, voice selection, summaries, recordings, and calendar-aware booking flows.",
   },
   {
-    title: "Admin Command Center",
-    body: "Global visibility across businesses, plans, invoices, uptime, and support actions.",
+    title: "Platform Oversight",
+    body: "Admin control across packages, invoices, support actions, service uptime, and account management.",
   },
+];
+
+const stats = [
+  { value: "24/7", label: "call coverage with business-controlled answering rules" },
+  { value: "1", label: "portal for transcripts, recordings, bookings, billing, and admin visibility" },
+  { value: "Multi", label: "industry flows for clinics, restaurants, salons, legal, and service teams" },
 ];
 
 export default function HomePage() {
   return (
-    <main
-      style={{
-        padding: "48px 24px 72px",
-      }}
-    >
-      <section
-        style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          display: "grid",
-          gap: 24,
-        }}
-      >
-        <div
-          style={{
-            background: "var(--panel)",
-            border: "1px solid var(--line)",
-            borderRadius: 28,
-            boxShadow: "var(--shadow)",
-            padding: "32px",
-          }}
-        >
-          <div
-            style={{
-              display: "inline-flex",
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: "var(--brand-soft)",
-              color: "var(--brand)",
-              fontSize: 14,
-              letterSpacing: "0.03em",
-              textTransform: "uppercase",
-            }}
-          >
-            Foundation Build
+    <main className="app-shell">
+      <SiteHeader />
+      <section className="container stack-lg">
+        <div className="hero-card home-frame hero-modern">
+          <div className="hero-grid">
+            <div className="hero-copy">
+              <span className="eyebrow">AI receptionist platform</span>
+              <h1 className="display-title">
+                The unified portal for <strong>calls</strong>, bookings, billing, and business control.
+              </h1>
+              <p className="lead">
+                Build one responsive system where companies configure how AI answers, what it says, which voice it
+                uses, and how every transcript, recording, order, and invoice gets handled after the call.
+              </p>
+              <div className="button-row" style={{ marginTop: 28 }}>
+                <Link className="button" href="/signup">
+                  Start company signup
+                </Link>
+                <Link className="button-secondary" href="/onboarding">
+                  View onboarding
+                </Link>
+              </div>
+            </div>
+
+            <div className="hero-visual" aria-hidden="true">
+              <div className="hero-orbit">
+                <div className="connector connector-a" />
+                <div className="connector connector-b" />
+                <div className="connector connector-c" />
+                <div className="connector connector-d" />
+
+                <div className="node-card node-a">
+                  <span>Phone Calls</span>
+                  <small>Twilio intake</small>
+                </div>
+                <div className="node-card node-b">
+                  <span>Schedules</span>
+                  <small>Calendar sync</small>
+                </div>
+                <div className="node-card node-c">
+                  <span>Billing</span>
+                  <small>Plans and invoices</small>
+                </div>
+                <div className="node-card node-d">
+                  <span>Call Logs</span>
+                  <small>Summary and transcript</small>
+                </div>
+
+                <div className="hero-platform">
+                  <div className="platform-grid">
+                    <div className="platform-tile active" />
+                    <div className="platform-tile" />
+                    <div className="platform-tile" />
+                    <div className="platform-tile" />
+                    <div className="platform-tile active" />
+                    <div className="platform-tile" />
+                    <div className="platform-tile" />
+                    <div className="platform-tile" />
+                    <div className="platform-tile active" />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1
-            style={{
-              margin: "18px 0 16px",
-              fontSize: "clamp(2.5rem, 4vw, 4.8rem)",
-              lineHeight: 0.95,
-              maxWidth: 780,
-            }}
-          >
-            Receptionist AI starts here.
-          </h1>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 20,
-              lineHeight: 1.7,
-              maxWidth: 760,
-              color: "var(--muted)",
-            }}
-          >
-            We have the first application shell in place so the business portal,
-            admin tools, and AI call infrastructure can grow on top of a clean
-            architecture.
-          </p>
         </div>
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 18,
-          }}
-        >
-          {pillars.map((pillar) => (
-            <article
-              key={pillar.title}
-              style={{
-                background: "var(--panel-strong)",
-                border: "1px solid var(--line)",
-                borderRadius: 24,
-                padding: 24,
-                boxShadow: "var(--shadow)",
-              }}
-            >
-              <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 28 }}>
-                {pillar.title}
-              </h2>
-              <p
-                style={{
-                  margin: 0,
-                  color: "var(--muted)",
-                  lineHeight: 1.7,
-                }}
-              >
-                {pillar.body}
-              </p>
-            </article>
+        <section className="stats-row">
+          {stats.map((stat) => (
+            <div key={stat.value} className="stat-card">
+              <strong>{stat.value}</strong>
+              <span>{stat.label}</span>
+            </div>
           ))}
         </section>
 
-        <section
-          style={{
-            background: "#142430",
-            color: "#fdf9f3",
-            borderRadius: 28,
-            padding: 32,
-            display: "grid",
-            gap: 18,
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 30 }}>Initial build priorities</h2>
-          <div
-            style={{
-              display: "grid",
-              gap: 14,
-            }}
-          >
-            {highlights.map((item) => (
-              <div
-                key={item}
-                style={{
-                  padding: "18px 20px",
-                  borderRadius: 18,
-                  background: "rgba(255, 255, 255, 0.08)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  lineHeight: 1.6,
-                }}
-              >
-                {item}
-              </div>
-            ))}
-          </div>
+        <section className="grid-3">
+          {pillars.map((pillar) => (
+            <article key={pillar.title} className="feature-card">
+              <h3>{pillar.title}</h3>
+              <p>{pillar.body}</p>
+            </article>
+          ))}
         </section>
       </section>
     </main>

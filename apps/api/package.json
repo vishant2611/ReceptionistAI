@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start:dev": "nest start --watch",
-    "build": "nest build",
+    "start:dev": "ts-node --project tsconfig.json -r tsconfig-paths/register src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "lint": "tsc --noEmit",
     "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
