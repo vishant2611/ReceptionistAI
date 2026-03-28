@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SUPPORT_ADMIN
+  OPERATIONS_ADMIN
+  BILLING_ADMIN
+  BUSINESS_OWNER
+  MANAGER
+  STAFF
+}
+
+enum BusinessCategory {
+  RESTAURANT
+  SALON
+  CLINIC
+  DENTAL
+  PHARMACY
+  REPAIR
+  REAL_ESTATE
+  LEGAL
+  OTHER
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  RECEIVED
+  ANSWERED_BY_AI
+  MISSED
+  FAILED
+  ESCALATED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  PAUSED
+}
+
+model User {
+  id          String           @id @default(cuid())
+  email       String           @unique
+  fullName    String?
+  passwordHash String?
+  role        UserRole
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  memberships BusinessMember[]
+}
+
+model Business {
+  id                 String              @id @default(cuid())
+  name               String
+  category           BusinessCategory
+  email              String?
+  phoneNumber        String?
+  timezone           String              @default("America/Toronto")
+  aiEnabled          Boolean             @default(false)
+  medicalModeEnabled Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  members            BusinessMember[]
+  calls              Call[]
+  subscription       Subscription?
+}
+
+model BusinessMember {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String
+  role       UserRole
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+}
+
+model Call {
+  id             String        @id @default(cuid())
+  businessId     String
+  direction      CallDirection @default(INBOUND)
+  status         CallStatus    @default(RECEIVED)
+  callerName     String?
+  callerNumber   String?
+  callerEmail    String?
+  summary        String?
+  transcript     String?
+  recordingUrl   String?
+  startedAt      DateTime      @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          String             @id @default(cuid())
+  businessId  String             @unique
+  planName    String
+  status      SubscriptionStatus @default(TRIAL)
+  renewsAt    DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}

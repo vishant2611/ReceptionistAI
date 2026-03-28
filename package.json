@@ -1,0 +1,19 @@
+{
+  "name": "receptionist-ai",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @receptionist-ai/web",
+    "dev:api": "npm run start:dev --workspace @receptionist-ai/api",
+    "build:web": "npm run build --workspace @receptionist-ai/web",
+    "build:api": "npm run build --workspace @receptionist-ai/api",
+    "lint:web": "npm run lint --workspace @receptionist-ai/web",
+    "lint:api": "npm run lint --workspace @receptionist-ai/api",
+    "prisma:generate": "npm run prisma:generate --workspace @receptionist-ai/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace @receptionist-ai/api"
+  }
+}
