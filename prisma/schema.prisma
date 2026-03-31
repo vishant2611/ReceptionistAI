@@ -18,10 +18,14 @@ enum UserRole {
 
 enum BusinessCategory {
   RESTAURANT
+  CAFE
   SALON
   CLINIC
+  DOCTOR
   DENTAL
   PHARMACY
+  PHYSIOTHERAPY
+  VETERINARY
   REPAIR
   REAL_ESTATE
   LEGAL
@@ -66,6 +70,17 @@ model Business {
   category           BusinessCategory
   email              String?
   phoneNumber        String?
+  address            String?
+  description        String?
+  servicesSummary    String?
+  priceListSummary   String?
+  officeHours        Json?
+  answeringRules     Json?
+  greetingMessage    String?
+  voicePreference    String?
+  selectedPlan       String?
+  billingCycle       String?
+  onboardingCompleted Boolean            @default(false)
   timezone           String              @default("America/Toronto")
   aiEnabled          Boolean             @default(false)
   medicalModeEnabled Boolean             @default(false)

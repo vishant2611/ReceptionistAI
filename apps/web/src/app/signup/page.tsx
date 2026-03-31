@@ -1,7 +1,6 @@
 import Link from "next/link";
+import { SignupForm } from "../../components/auth/signup-form";
 import { SiteHeader } from "../../components/site-header";
-
-const categories = ["Restaurant", "Salon", "Clinic", "Dental", "Legal", "Real Estate", "Repair", "Other"];
 
 export default function SignUpPage() {
   return (
@@ -31,53 +30,10 @@ export default function SignUpPage() {
         <div className="auth-card stack-md">
           <div>
             <h2 className="auth-title">Create account</h2>
-            <p className="muted">We’ll use these details to start the company workspace and tenant record.</p>
+            <p className="muted">We&apos;ll use these details to start the company workspace and tenant record.</p>
           </div>
 
-          <form className="form-grid">
-            <div className="field">
-              <label htmlFor="business-name">Business name</label>
-              <input id="business-name" name="businessName" placeholder="Receptionist AI Clinic" type="text" />
-            </div>
-
-            <div className="field">
-              <label htmlFor="industry-type">Industry type</label>
-              <select defaultValue="" id="industry-type" name="industryType">
-                <option disabled value="">
-                  Select one
-                </option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label htmlFor="business-address">Address</label>
-              <input id="business-address" name="address" placeholder="123 Main Street, Toronto" type="text" />
-            </div>
-
-            <div className="field">
-              <label htmlFor="contact-number">Contact number</label>
-              <input id="contact-number" name="phone" placeholder="+1 (555) 123-4567" type="tel" />
-            </div>
-
-            <div className="field">
-              <label htmlFor="business-email">Email address</label>
-              <input id="business-email" name="email" placeholder="owner@company.com" type="email" />
-            </div>
-
-            <div className="field">
-              <label htmlFor="signup-password">Password</label>
-              <input id="signup-password" name="password" placeholder="Create a strong password" type="password" />
-            </div>
-
-            <button className="button" type="button">
-              Create company account
-            </button>
-          </form>
+          <SignupForm />
 
           <div className="helper-row">
             <span className="muted">Already registered?</span>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SigninForm } from "../../components/auth/signin-form";
 import { SiteHeader } from "../../components/site-header";
 
 const signInNotes = [
@@ -39,31 +40,20 @@ export default function SignInPage() {
             <p className="muted">Use your username or email and password to open your company portal.</p>
           </div>
 
-          <form className="form-grid">
-            <div className="field">
-              <label htmlFor="signin-identity">Username or email</label>
-              <input id="signin-identity" name="identity" placeholder="company@example.com" type="text" />
-            </div>
-            <div className="field">
-              <label htmlFor="signin-password">Password</label>
-              <input id="signin-password" name="password" placeholder="Enter your password" type="password" />
-            </div>
-            <div className="helper-row">
-              <span className="inline-badge">Tenant-safe portal access</span>
-              <Link className="muted" href="/signup">
-                Need an account?
-              </Link>
-            </div>
-            <button className="button" type="button">
-              Sign in
-            </button>
-          </form>
+          <SigninForm />
+
+          <div className="helper-row">
+            <span className="inline-badge">Tenant-safe portal access</span>
+            <Link className="muted" href="/signup">
+              Need an account?
+            </Link>
+          </div>
 
           <div className="subtle-divider" />
 
           <div className="auth-note">
-            <strong>Next implementation step:</strong> wire this form to the business auth flow and role-based session
-            handling.
+            <strong>Current behavior:</strong> sign-in now validates real account data and returns the linked business
+            records. Session management and protected dashboard routes come next.
           </div>
         </div>
       </section>

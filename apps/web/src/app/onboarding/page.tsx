@@ -1,3 +1,4 @@
+import { OnboardingForm } from "../../components/auth/onboarding-form";
 import { SiteHeader } from "../../components/site-header";
 
 const steps = [
@@ -29,19 +30,27 @@ const industryRules = [
   "Service businesses should capture callback requests, lead details, and consultation preferences.",
 ];
 
-export default function OnboardingPage() {
+type OnboardingPageProps = {
+  searchParams: Promise<{
+    businessId?: string;
+  }>;
+};
+
+export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
+  const params = await searchParams;
+
   return (
     <main className="app-shell">
       <SiteHeader />
       <section className="container stack-lg">
         <div className="hero-card">
-          <span className="eyebrow">Onboarding preview</span>
+          <span className="eyebrow">Onboarding setup</span>
           <h1 className="display-title" style={{ fontSize: "clamp(2.5rem, 4vw, 4.5rem)" }}>
-            A structured setup flow before any company turns the AI switch on.
+            Save the first business profile before any company turns the AI switch on.
           </h1>
           <p className="lead">
-            This page establishes the first pass of the onboarding experience: profile, services, hours, answering
-            rules, voice setup, and billing.
+            This onboarding step now saves profile, hours, answering preferences, greeting, voice, and package choices
+            into the business record.
           </p>
         </div>
 
@@ -72,62 +81,17 @@ export default function OnboardingPage() {
               </h2>
             </div>
 
-            <form className="form-grid two-col">
-              <div className="field">
-                <label htmlFor="onboard-business-name">Business name</label>
-                <input id="onboard-business-name" placeholder="Receptionist AI Dental" type="text" />
-              </div>
-              <div className="field">
-                <label htmlFor="onboard-industry">Industry type</label>
-                <select defaultValue="" id="onboard-industry">
-                  <option disabled value="">
-                    Select industry
-                  </option>
-                  <option>Clinic</option>
-                  <option>Doctor</option>
-                  <option>Dental</option>
-                  <option>Restaurant</option>
-                  <option>Salon</option>
-                  <option>Legal</option>
-                  <option>Real Estate</option>
-                  <option>Other</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="onboard-phone">Contact number</label>
-                <input id="onboard-phone" placeholder="+1 (555) 222-7788" type="tel" />
-              </div>
-              <div className="field">
-                <label htmlFor="onboard-timezone">Timezone</label>
-                <select defaultValue="America/Toronto" id="onboard-timezone">
-                  <option>America/Toronto</option>
-                  <option>America/New_York</option>
-                  <option>America/Chicago</option>
-                  <option>America/Los_Angeles</option>
-                </select>
-              </div>
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="onboard-address">Address</label>
-                <input id="onboard-address" placeholder="456 Premium Avenue, Toronto, ON" type="text" />
-              </div>
-              <div className="field" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="onboard-services">Business summary</label>
-                <textarea
-                  id="onboard-services"
-                  placeholder="Describe the services, products, and what the AI should know when speaking to callers."
-                />
-              </div>
-            </form>
+            <OnboardingForm businessId={params.businessId} />
 
             <div className="auth-note">
               <strong>Medical Mode rule:</strong> if the selected industry is doctor, clinic, dental, pharmacy,
-              physiotherapy, or another medical category, the onboarding flow should auto-enable medical safety logic.
+              physiotherapy, or another medical category, the onboarding flow auto-enables medical safety logic.
             </div>
           </div>
         </section>
 
         <section className="dark-card stack-md" style={{ padding: 28 }}>
-          <h2 className="section-title">Industry-specific behavior we’ll support in the next slices</h2>
+          <h2 className="section-title">Industry-specific behavior we&apos;ll support in the next slices</h2>
           <div className="check-list">
             {industryRules.map((rule) => (
               <div key={rule} className="check-item" style={{ color: "rgba(255, 250, 245, 0.82)" }}>
