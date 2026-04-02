@@ -21,6 +21,7 @@ export type BusinessOnboardingInput = z.infer<typeof businessOnboardingSchema>;
 
 export const businessAiSettingsSchema = z.object({
   aiEnabled: z.boolean().default(false),
+  callHandlingMode: z.enum(["LIVE_AI", "MESSAGE_CAPTURE", "HYBRID", "STAFF_FIRST"]).default("LIVE_AI"),
   answerMode: z.enum(["ALL_CALLS", "BUSINESS_HOURS", "AFTER_MISSED_RINGS"]).default("ALL_CALLS"),
   ringCount: z.coerce.number().int().min(1).max(8).default(3),
   greetingMessage: z.string().min(6).max(500),

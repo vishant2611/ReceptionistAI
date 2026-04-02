@@ -14,3 +14,4 @@ apps/api/dist/
 apps/web/.next/
 vendor_py/
 output/
+twilio_2FA_recovery_code.txt

@@ -25,6 +25,7 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
   if (portal.loading) return <main className="app-shell"><section className="container"><div className="status-banner neutral">Loading telephony workspace...</div></section></main>;
   if (portal.error) return <main className="app-shell"><section className="container"><div className="status-banner error">{portal.error}</div></section></main>;
@@ -47,6 +48,7 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
       telephony.consentMessage || "This call may be recorded and transcribed for service quality and follow-up.",
     postCallSmsEnabled: telephony.postCallSmsEnabled ?? false,
   };
+  const inboundWebhookUrl = `${apiBaseUrl}/api/telephony/twilio/voice/${business.id}/inbound`;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -184,6 +186,11 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
             <div className="detail-block">
               <h3>What this unlocks</h3>
               <p>Twilio number mapping, inbound webhook routing, AI call pickup rules, escalation paths, and recording consent handling.</p>
+            </div>
+
+            <div className="detail-block">
+              <h3>Inbound webhook URL</h3>
+              <p className="code-inline">{inboundWebhookUrl}</p>
             </div>
 
             <div className="detail-list">

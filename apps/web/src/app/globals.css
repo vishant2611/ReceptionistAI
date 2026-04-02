@@ -1078,6 +1078,18 @@ img {
   font-size: 0.98rem;
 }
 
+.code-inline {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.04);
+  border: 1px solid var(--line);
+  color: #1d2736 !important;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.88rem !important;
+  overflow-wrap: anywhere;
+}
+
 .call-log-table {
   display: grid;
   gap: 12px;

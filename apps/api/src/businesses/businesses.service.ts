@@ -149,6 +149,7 @@ export class BusinessesService {
         voicePreference: input.voicePreference.trim(),
         answeringRules: {
           ...previousRules,
+          callHandlingMode: input.callHandlingMode,
           primaryMode: input.answerMode,
           ringCount: input.ringCount,
           afterHoursEnabled: input.afterHoursEnabled,

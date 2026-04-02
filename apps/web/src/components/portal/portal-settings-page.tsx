@@ -23,6 +23,7 @@ export function PortalSettingsPage({ businessId = "" }: Props) {
 
   const settingsDefaults = {
     aiEnabled: business?.aiEnabled ?? false,
+    callHandlingMode: String(answeringRules.callHandlingMode ?? "LIVE_AI"),
     answerMode: String(answeringRules.primaryMode ?? "ALL_CALLS"),
     ringCount: Number(answeringRules.ringCount ?? 3),
     greetingMessage:
@@ -53,6 +54,7 @@ export function PortalSettingsPage({ businessId = "" }: Props) {
     const formData = new FormData(event.currentTarget);
     const payload = {
       aiEnabled: formData.get("aiEnabled") === "on",
+      callHandlingMode: String(formData.get("callHandlingMode") ?? "LIVE_AI"),
       answerMode: String(formData.get("answerMode") ?? "ALL_CALLS"),
       ringCount: Number(formData.get("ringCount") ?? 3),
       greetingMessage: String(formData.get("greetingMessage") ?? ""),
@@ -122,6 +124,16 @@ export function PortalSettingsPage({ businessId = "" }: Props) {
           </div>
 
           <div className="form-grid">
+            <div className="field">
+              <label htmlFor="call-handling-mode">Call handling strategy</label>
+              <select defaultValue={settingsDefaults.callHandlingMode} id="call-handling-mode" name="callHandlingMode">
+                <option value="LIVE_AI">Live AI receptionist</option>
+                <option value="MESSAGE_CAPTURE">Message capture only</option>
+                <option value="HYBRID">Hybrid: AI + message capture</option>
+                <option value="STAFF_FIRST">Staff first, AI backup</option>
+              </select>
+            </div>
+
             <div className="field">
               <label htmlFor="answer-mode">When should AI answer?</label>
               <select defaultValue={settingsDefaults.answerMode} id="answer-mode" name="answerMode">
@@ -221,6 +233,18 @@ export function PortalSettingsPage({ businessId = "" }: Props) {
           <div className="page-intro">
             <span className="eyebrow">Preview</span>
             <h2 className="section-title" style={{ marginTop: 14 }}>Current behavior</h2>
+          </div>
+          <div className="detail-block">
+            <h3>Call handling strategy</h3>
+            <p>
+              {settingsDefaults.callHandlingMode === "LIVE_AI"
+                ? "AI will try to speak with callers directly as the primary receptionist."
+                : settingsDefaults.callHandlingMode === "MESSAGE_CAPTURE"
+                  ? "The system will greet callers, collect their message, and store it in the portal."
+                  : settingsDefaults.callHandlingMode === "HYBRID"
+                    ? "The system can use live AI and fall back to message capture depending on the call situation."
+                    : "Staff gets the first chance to answer, with AI or capture used as backup."}
+            </p>
           </div>
           <div className="detail-block">
             <h3>Answer mode</h3>
