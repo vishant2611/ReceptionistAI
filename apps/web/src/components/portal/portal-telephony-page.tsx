@@ -49,6 +49,8 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
     postCallSmsEnabled: telephony.postCallSmsEnabled ?? false,
   };
   const inboundWebhookUrl = `${apiBaseUrl}/api/telephony/twilio/voice/${business.id}/inbound`;
+  const openAiRealtimeUrl = `${apiBaseUrl}/api/telephony/realtime/${business.id}/session`;
+  const twilioMediaBridgeUrl = apiBaseUrl.replace(/^http/i, "ws") + `/ws/twilio-media?businessId=${business.id}`;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -191,6 +193,16 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
             <div className="detail-block">
               <h3>Inbound webhook URL</h3>
               <p className="code-inline">{inboundWebhookUrl}</p>
+            </div>
+
+            <div className="detail-block">
+              <h3>OpenAI realtime session endpoint</h3>
+              <p className="code-inline">{openAiRealtimeUrl}</p>
+            </div>
+
+            <div className="detail-block">
+              <h3>Twilio media bridge URL</h3>
+              <p className="code-inline">{twilioMediaBridgeUrl}</p>
             </div>
 
             <div className="detail-list">

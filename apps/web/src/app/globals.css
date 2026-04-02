@@ -1141,6 +1141,14 @@ img {
   line-height: 1.6;
 }
 
+.transcript-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 @media (max-width: 900px) {
   .auth-shell,
   .form-grid.two-col {

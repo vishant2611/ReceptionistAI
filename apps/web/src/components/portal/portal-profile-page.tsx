@@ -7,8 +7,17 @@ type Props = {
   businessId?: string;
 };
 
+function formatOfficeHours(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+}
+
 export function PortalProfilePage({ businessId = "" }: Props) {
   const portal = usePortalData(businessId);
+  const officeHours = formatOfficeHours(portal.business?.officeHours);
 
   if (portal.loading) return <main className="app-shell"><section className="container"><div className="status-banner neutral">Loading business profile...</div></section></main>;
   if (portal.error) return <main className="app-shell"><section className="container"><div className="status-banner error">{portal.error}</div></section></main>;
@@ -40,7 +49,7 @@ export function PortalProfilePage({ businessId = "" }: Props) {
         <div className="surface-card stack-md">
           <div className="page-intro">
             <span className="eyebrow">Summary</span>
-            <h2 className="section-title" style={{ marginTop: 14 }}>Services and pricing</h2>
+            <h2 className="section-title" style={{ marginTop: 14 }}>Services, pricing, and hours</h2>
           </div>
           <div className="detail-block">
             <h3>Business summary</h3>
@@ -53,6 +62,18 @@ export function PortalProfilePage({ businessId = "" }: Props) {
           <div className="detail-block">
             <h3>Price summary</h3>
             <p>{portal.business.priceListSummary || "No pricing summary added yet."}</p>
+          </div>
+          <div className="detail-block">
+            <h3>Office hours</h3>
+            {officeHours.length > 0 ? (
+              <div className="stack-sm">
+                {officeHours.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+            ) : (
+              <p>No office hours added yet.</p>
+            )}
           </div>
         </div>
       </section>

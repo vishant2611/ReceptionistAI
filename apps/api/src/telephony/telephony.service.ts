@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { CallStatus } from "@prisma/client";
+import { URL } from "node:url";
 import { PrismaService } from "../prisma/prisma.service";
+import WebSocket from "ws";
 
 type TwilioInboundPayload = {
   CallSid?: string;
@@ -51,13 +53,169 @@ function normalizeText(value: string) {
   return value.toLowerCase();
 }
 
+function mapVoicePreferenceToRealtimeVoice(voicePreference: string | null | undefined) {
+  const value = normalizeText(voicePreference || "");
+
+  if (value.includes("male")) {
+    return "cedar";
+  }
+
+  if (value.includes("british")) {
+    return "ash";
+  }
+
+  return "marin";
+}
+
+function formatCurrentBusinessDate(timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: timezone,
+  }).format(new Date());
+}
+
+function formatOfficeHours(officeHours: unknown) {
+  if (!Array.isArray(officeHours)) {
+    return "";
+  }
+
+  return officeHours
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function buildRealtimeSummary(callerTurns: string[]) {
+  if (callerTurns.length === 0) {
+    return "Realtime AI handled the inbound call.";
+  }
+
+  if (callerTurns.length === 1) {
+    return `Caller asked about: ${callerTurns[0].slice(0, 140)}.`;
+  }
+
+  return `Caller discussed ${callerTurns.length} topics, including: ${callerTurns
+    .slice(0, 2)
+    .map((turn) => turn.slice(0, 70))
+    .join(" | ")}.`;
+}
+
+function defaultServiceSummary(category: string) {
+  const value = normalizeText(category);
+
+  if (value.includes("restaurant") || value.includes("cafe")) {
+    return "food orders, menu questions, pickup timing, and general customer inquiries";
+  }
+
+  if (value.includes("clinic") || value.includes("doctor") || value.includes("dental") || value.includes("physio")) {
+    return "appointment requests, clinic information, callback requests, and general patient intake support";
+  }
+
+  if (value.includes("salon")) {
+    return "appointment booking, service questions, pricing guidance, and callback requests";
+  }
+
+  if (value.includes("repair")) {
+    return "repair inquiries, service booking, quote requests, and callback scheduling";
+  }
+
+  if (value.includes("legal")) {
+    return "consultation requests, callback scheduling, and general service inquiries";
+  }
+
+  return "general customer inquiries, booking requests, order capture, and callback messages";
+}
+
 @Injectable()
 export class TelephonyService {
+  private readonly logger = new Logger(TelephonyService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  private buildRealtimeInstructions(
+    business: {
+      name: string;
+      category: string;
+      description: string | null;
+      servicesSummary: string | null;
+      priceListSummary: string | null;
+      officeHours: unknown;
+      address: string | null;
+      phoneNumber: string | null;
+      greetingMessage: string | null;
+      medicalModeEnabled: boolean;
+      voicePreference: string | null;
+      timezone: string;
+    },
+    rules: Record<string, unknown>,
+  ) {
+    const telephony =
+      rules.telephony && typeof rules.telephony === "object" && !Array.isArray(rules.telephony)
+        ? (rules.telephony as Record<string, unknown>)
+        : {};
+    const officeHours = formatOfficeHours(business.officeHours) || "";
+    const businessDate = formatCurrentBusinessDate(business.timezone || "America/Toronto");
+    const officeHoursInstruction = officeHours
+      ? officeHours
+      : "The exact operating hours are still being finalized in the portal, so offer to capture a callback request if needed";
+    const emergencyMessage =
+      typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
+        ? rules.emergencyMessage.trim()
+        : business.medicalModeEnabled
+          ? "If this is a medical emergency, please call 911."
+          : "No emergency instruction is required for this business category.";
+    const afterHoursMessage =
+      typeof rules.afterHoursMessage === "string" && rules.afterHoursMessage.trim().length > 0
+        ? rules.afterHoursMessage.trim()
+        : "If the business is closed, capture the caller's details and explain that the team will follow up later.";
+    const callHandlingMode =
+      typeof rules.callHandlingMode === "string" ? rules.callHandlingMode : "LIVE_AI";
+    const answerMode =
+      typeof rules.primaryMode === "string" ? rules.primaryMode : "ALL_CALLS";
+    const consentMessage =
+      typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
+        ? telephony.consentMessage.trim()
+        : "Calls may be recorded and transcribed for service quality and follow-up.";
+
+    return [
+      `You are the live AI receptionist for ${business.name}.`,
+      `Business category: ${business.category}.`,
+      `Greeting to use: ${business.greetingMessage || `Thank you for calling ${business.name}. How can I help you today?`}`,
+      `Business summary: ${business.description || "No detailed summary provided yet."}`,
+      `Services: ${business.servicesSummary || business.description || defaultServiceSummary(business.category)}`,
+      `Pricing or fees: ${business.priceListSummary || "If explicit pricing is missing, say the team will confirm the exact amount."}`,
+      `Operating hours: ${officeHoursInstruction}.`,
+      `Address: ${business.address || "No address configured yet."}`,
+      `Phone number: ${business.phoneNumber || "No phone number configured yet."}`,
+      `Current local business date: ${businessDate}.`,
+      `Business timezone: ${business.timezone || "America/Toronto"}.`,
+      `Call handling mode: ${callHandlingMode}.`,
+      `Answer mode: ${answerMode}.`,
+      `After-hours behavior: ${afterHoursMessage}`,
+      `Emergency guidance: ${emergencyMessage}`,
+      `Telephony consent message: ${consentMessage}`,
+      "Speak only in clear, natural English.",
+      "Use short, natural spoken sentences that sound like a real receptionist.",
+      "Do not switch languages unless the caller clearly asks for another language.",
+      "Use only the information provided by the business configuration.",
+      "Never invent operating hours, prices, or appointment availability.",
+      "When discussing dates or weekdays, rely on the current local business date provided above.",
+      "If the caller asks for services and the services summary is sparse, use the business summary as fallback before saying details are still being confirmed.",
+      "If the caller asks about hours and the office hours are not configured, say the hours are still being finalized in the portal and offer to capture a callback request.",
+      "If the caller asks for pricing or services and the portal data is incomplete, say that the team will confirm the details.",
+      "If this is a medical business and the caller describes an emergency, deliver the emergency guidance immediately and do not continue normal intake.",
+      "Let the caller finish speaking before you answer. Do not interrupt unless they clearly stop.",
+      "Capture caller intent, contact details, and any order or booking information clearly.",
+    ].join("\n");
+  }
 
   private buildBusinessAwareReply(
     business: {
       name: string;
+      category: string;
       description: string | null;
       servicesSummary: string | null;
       priceListSummary: string | null;
@@ -89,7 +247,7 @@ export class TelephonyService {
         return `${business.name} currently lists these hours: ${business.officeHours.join(", ")}.`;
       }
 
-      return `I can help with that, but the current operating hours have not been fully configured in the portal yet.`;
+      return `I do not have the exact operating hours confirmed yet, but I can capture your request and have the team follow up with the correct timing.`;
     }
 
     if (speech.includes("price") || speech.includes("cost") || speech.includes("fee") || speech.includes("how much")) {
@@ -111,7 +269,7 @@ export class TelephonyService {
         return `${business.name} currently offers: ${business.servicesSummary.trim()}`;
       }
 
-      return `The service summary is still being updated, but I can capture what you need and pass it to the team.`;
+      return `${business.name} can help with ${business.description?.trim() || defaultServiceSummary(business.category)}. I can also capture your specific request and pass it to the team.`;
     }
 
     if (speech.includes("book") || speech.includes("appointment") || speech.includes("consultation") || speech.includes("schedule")) {
@@ -239,17 +397,13 @@ export class TelephonyService {
     }
 
     if (callHandlingMode === "LIVE_AI" || callHandlingMode === "HYBRID") {
-      const gatherAction = `${baseUrl}/api/telephony/twilio/voice/${businessId}/live-ai-turn`;
-      const intro = [
-        greeting,
-        consentMessage,
-        "Please briefly tell me how I can help you today after the tone.",
-        emergencyMessage,
-      ].filter(Boolean);
+      const wsBaseUrl = baseUrl.replace(/^http/i, "ws");
+      const streamUrl = `${wsBaseUrl}/ws/twilio-media?businessId=${encodeURIComponent(businessId)}`;
+      const intro = [greeting, consentMessage, emergencyMessage].filter(Boolean);
 
       return `<Response>${intro
         .map((line) => `<Say voice="alice">${escapeXml(line)}</Say>`)
-        .join("")}<Gather input="speech" action="${escapeXml(gatherAction)}" method="POST" speechTimeout="auto" speechModel="phone_call" /><Say voice="alice">I did not hear anything, so I will end the call for now. Goodbye.</Say><Hangup/></Response>`;
+        .join("")}<Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /></Stream></Connect></Response>`;
     }
 
     const lines = [
@@ -340,6 +494,331 @@ export class TelephonyService {
     }
 
     return `<Response><Say voice="alice">${escapeXml(reply)}</Say><Say voice="alice">This is the first live AI foundation step. The next upgrade will keep the conversation going naturally.</Say><Hangup/></Response>`;
+  }
+
+  async getRealtimeSessionBlueprint(businessId: string) {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    const rules = readRules(business.answeringRules);
+    const instructions = this.buildRealtimeInstructions(business, rules);
+    const voice = mapVoicePreferenceToRealtimeVoice(business.voicePreference);
+
+    return {
+      businessId: business.id,
+      model: "gpt-realtime",
+      voice,
+      instructions,
+      aiEnabled: business.aiEnabled,
+      callHandlingMode: typeof rules.callHandlingMode === "string" ? rules.callHandlingMode : "LIVE_AI",
+      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    };
+  }
+
+  async handleTwilioMediaStream(twilioSocket: WebSocket, url: URL) {
+    const urlBusinessId = url.searchParams.get("businessId") || "";
+    let streamSid = "";
+    let businessId = urlBusinessId;
+    let openAiSocket: WebSocket | null = null;
+    let currentCallId = "";
+    let activeBusinessName = "The business";
+    let latestCallerTranscript = "";
+    let latestAssistantTranscript = "";
+    const callerTurns: string[] = [];
+    const assistantTurns: string[] = [];
+    const transcriptLines: string[] = [];
+    const seenCallerTurns = new Set<string>();
+    const seenAssistantTurns = new Set<string>();
+
+    const persistTranscript = async (summary?: string, endedAt?: Date) => {
+      if (!currentCallId) {
+        return;
+      }
+
+      await this.prisma.call.update({
+        where: { id: currentCallId },
+        data: {
+          summary: summary || buildRealtimeSummary(callerTurns),
+          transcript: transcriptLines.join("\n\n"),
+          endedAt: endedAt || undefined,
+        },
+      });
+    };
+
+    const initializeOpenAiBridge = async (activeBusinessId: string) => {
+      const business = await this.prisma.business.findUnique({
+        where: { id: activeBusinessId },
+      });
+
+      if (!business) {
+        this.logger.warn(`Twilio media stream received unknown businessId=${activeBusinessId}.`);
+        twilioSocket.close();
+        return;
+      }
+
+      activeBusinessName = business.name;
+
+      const apiKey = process.env.OPENAI_API_KEY;
+
+      if (!apiKey) {
+        this.logger.error(`OPENAI_API_KEY is missing for businessId=${activeBusinessId}.`);
+        twilioSocket.close();
+        return;
+      }
+
+      const session = await this.getRealtimeSessionBlueprint(activeBusinessId);
+      this.logger.log(`Opening Twilio media bridge for businessId=${activeBusinessId}, model=${session.model}, voice=${session.voice}.`);
+      openAiSocket = new WebSocket(`wss://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model)}`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      openAiSocket.on("open", () => {
+        this.logger.log(`OpenAI realtime socket opened for businessId=${activeBusinessId}.`);
+        openAiSocket?.send(
+          JSON.stringify({
+            type: "session.update",
+            session: {
+              type: "realtime",
+              model: session.model,
+              instructions: session.instructions,
+              output_modalities: ["audio"],
+              audio: {
+                input: {
+                  format: {
+                    type: "audio/pcmu",
+                  },
+                  noise_reduction: {
+                    type: "near_field",
+                  },
+                  transcription: {
+                    model: "gpt-4o-mini-transcribe",
+                    language: "en",
+                    prompt: `Receptionist call for ${business.name}. Expect English words related to ${business.category.toLowerCase()}, services, pricing, appointments, dates, and office hours.`,
+                  },
+                  turn_detection: {
+                    type: "semantic_vad",
+                    eagerness: "low",
+                    interrupt_response: false,
+                    create_response: true,
+                  },
+                },
+                output: {
+                  format: {
+                    type: "audio/pcmu",
+                  },
+                  voice: session.voice,
+                  speed: 0.94,
+                },
+              },
+            },
+          }),
+        );
+      });
+
+      openAiSocket.on("message", async (message) => {
+        const raw = message.toString();
+        let event: Record<string, unknown>;
+
+        try {
+          event = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          this.logger.warn(`Received non-JSON OpenAI realtime event for businessId=${activeBusinessId}.`);
+          return;
+        }
+
+        if (typeof event.type === "string") {
+          this.logger.debug(`OpenAI realtime event for businessId=${activeBusinessId}: ${event.type}`);
+        }
+
+        if (event.type === "conversation.item.input_audio_transcription.completed" && typeof event.transcript === "string") {
+          latestCallerTranscript = event.transcript.trim();
+          if (latestCallerTranscript && !seenCallerTurns.has(latestCallerTranscript)) {
+            seenCallerTurns.add(latestCallerTranscript);
+            callerTurns.push(latestCallerTranscript);
+            transcriptLines.push(`Caller: ${latestCallerTranscript}`);
+          }
+          await persistTranscript(
+            buildRealtimeSummary(callerTurns),
+          );
+        }
+
+        if (event.type === "response.output_audio_transcript.done" && typeof event.transcript === "string") {
+          latestAssistantTranscript = event.transcript.trim();
+          if (latestAssistantTranscript && !seenAssistantTurns.has(latestAssistantTranscript)) {
+            seenAssistantTurns.add(latestAssistantTranscript);
+            assistantTurns.push(latestAssistantTranscript);
+            transcriptLines.push(`Assistant: ${latestAssistantTranscript}`);
+          }
+          await persistTranscript(
+            buildRealtimeSummary(callerTurns),
+          );
+        }
+
+        if ((event.type === "response.output_audio.delta" || event.type === "response.audio.delta") && typeof event.delta === "string" && streamSid) {
+          twilioSocket.send(
+            JSON.stringify({
+              event: "media",
+              streamSid,
+              media: {
+                payload: event.delta,
+              },
+            }),
+          );
+        }
+
+      });
+
+      openAiSocket.on("close", (code, reason) => {
+        this.logger.warn(`OpenAI realtime socket closed for businessId=${activeBusinessId}. code=${code} reason=${reason.toString() || "none"}`);
+        safeClose();
+      });
+      openAiSocket.on("error", (error) => {
+        this.logger.error(`OpenAI realtime socket error for businessId=${activeBusinessId}: ${error instanceof Error ? error.message : String(error)}`);
+        safeClose();
+      });
+    };
+
+    const safeClose = () => {
+      this.logger.log(`Closing media bridge for businessId=${businessId || "unknown"}, streamSid=${streamSid || "unknown"}.`);
+      if (twilioSocket.readyState === WebSocket.OPEN) {
+        twilioSocket.close();
+      }
+
+      if (openAiSocket && (openAiSocket.readyState === WebSocket.OPEN || openAiSocket.readyState === WebSocket.CONNECTING)) {
+        openAiSocket.close();
+      }
+    };
+
+    twilioSocket.on("close", () => {
+      this.logger.warn(`Twilio media socket closed for businessId=${businessId || "unknown"}, streamSid=${streamSid || "unknown"}.`);
+      safeClose();
+    });
+    twilioSocket.on("error", (error) => {
+      this.logger.error(`Twilio media socket error for businessId=${businessId || "unknown"}: ${error instanceof Error ? error.message : String(error)}`);
+      safeClose();
+    });
+
+    twilioSocket.on("message", async (data) => {
+      let event: Record<string, unknown>;
+
+      try {
+        event = JSON.parse(data.toString()) as Record<string, unknown>;
+      } catch {
+        this.logger.warn(`Received non-JSON Twilio media event for businessId=${businessId}.`);
+        return;
+      }
+
+      if (event.event === "start") {
+        const start = event.start as Record<string, unknown> | undefined;
+        streamSid = typeof event.streamSid === "string" ? event.streamSid : "";
+        const callSid = start && typeof start.callSid === "string" ? start.callSid : "unknown";
+        const customParameters =
+          start && start.customParameters && typeof start.customParameters === "object"
+            ? (start.customParameters as Record<string, unknown>)
+            : {};
+        businessId =
+          (typeof customParameters.businessId === "string" ? customParameters.businessId : "") || businessId;
+
+        if (!businessId) {
+          this.logger.warn("Twilio media stream started without a businessId in URL or custom parameters.");
+          safeClose();
+          return;
+        }
+
+        if (!openAiSocket) {
+          await initializeOpenAiBridge(businessId);
+        }
+
+        this.logger.log(`Twilio media stream started for businessId=${businessId}, callSid=${callSid}, streamSid=${streamSid || "unknown"}.`);
+        const latestCall = await this.prisma.call.findFirst({
+          where: { businessId },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (latestCall) {
+          currentCallId = latestCall.id;
+          transcriptLines.push(`${activeBusinessName} live AI session started. CallSid=${callSid}, StreamSid=${streamSid || "unknown"}.`);
+          await this.prisma.call.update({
+            where: { id: latestCall.id },
+            data: {
+              transcript: `${latestCall.transcript || ""}\n${transcriptLines[0]}`.trim(),
+              summary: "Live AI call started.",
+            },
+          });
+        }
+        return;
+      }
+
+      if (event.event === "media") {
+        const media = event.media as Record<string, unknown> | undefined;
+        const payload = media && typeof media.payload === "string" ? media.payload : "";
+
+        if (payload && openAiSocket && openAiSocket.readyState === WebSocket.OPEN) {
+          openAiSocket.send(
+            JSON.stringify({
+              type: "input_audio_buffer.append",
+              audio: payload,
+            }),
+          );
+        }
+        return;
+      }
+
+      if (event.event === "stop") {
+        this.logger.log(`Twilio media stream stop received for businessId=${businessId}, streamSid=${streamSid || "unknown"}.`);
+        await persistTranscript(undefined, new Date());
+        safeClose();
+      }
+    });
+  }
+
+  async createRealtimeSessionFromSdp(businessId: string, sdp: string) {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      throw new ServiceUnavailableException("OPENAI_API_KEY is not configured yet.");
+    }
+
+    const session = await this.getRealtimeSessionBlueprint(businessId);
+    const formData = new FormData();
+
+    formData.set("sdp", sdp);
+    formData.set(
+      "session",
+      JSON.stringify({
+        type: "realtime",
+        model: session.model,
+        instructions: session.instructions,
+        audio: {
+          output: {
+            voice: session.voice,
+          },
+        },
+      }),
+    );
+
+    const response = await fetch("https://api.openai.com/v1/realtime/calls", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    const answerSdp = await response.text();
+
+    if (!response.ok) {
+      throw new ServiceUnavailableException(`OpenAI realtime session failed: ${answerSdp}`);
+    }
+
+    return answerSdp;
   }
 
   buildBaseUrlFromHeaders(headers: Record<string, string | string[] | undefined>) {

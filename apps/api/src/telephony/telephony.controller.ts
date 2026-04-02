@@ -42,4 +42,18 @@ export class TelephonyController {
   ) {
     return this.telephonyService.handleLiveAiTurn(businessId, body);
   }
+
+  @All("ai-session/:businessId")
+  async getRealtimeBlueprint(@Param("businessId") businessId: string) {
+    return this.telephonyService.getRealtimeSessionBlueprint(businessId);
+  }
+
+  @All("realtime/:businessId/session")
+  @Header("Content-Type", "application/sdp")
+  async createRealtimeSession(
+    @Param("businessId") businessId: string,
+    @Body() body: string,
+  ) {
+    return this.telephonyService.createRealtimeSessionFromSdp(businessId, body);
+  }
 }

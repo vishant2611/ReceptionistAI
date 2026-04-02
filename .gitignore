@@ -12,6 +12,7 @@ coverage/
 .env.production.local
 apps/api/dist/
 apps/web/.next/
+*.tsbuildinfo
 vendor_py/
 output/
 twilio_2FA_recovery_code.txt

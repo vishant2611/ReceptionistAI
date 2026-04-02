@@ -88,7 +88,7 @@ export function PortalCallLogsPage({ businessId = "" }: Props) {
             <span className="eyebrow">Operations</span>
             <h2 className="section-title" style={{ marginTop: 14 }}>Recent AI-handled calls</h2>
             <p className="lead" style={{ marginTop: 10 }}>
-              Demo records are shown until telephony is connected. The table is already shaped for real call ingestion.
+              Review the latest caller intent, the assistant reply, and the transcript captured during the conversation.
             </p>
           </div>
 
@@ -126,7 +126,7 @@ export function PortalCallLogsPage({ businessId = "" }: Props) {
                     <p>{call.summary || "No summary recorded."}</p>
                   </div>
                   <div>
-                    <p>{call.transcript || "No transcript recorded."}</p>
+                    <p className="transcript-text">{call.transcript || "No transcript recorded."}</p>
                   </div>
                 </article>
               ))
