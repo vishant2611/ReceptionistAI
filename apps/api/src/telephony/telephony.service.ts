@@ -57,14 +57,18 @@ function mapVoicePreferenceToRealtimeVoice(voicePreference: string | null | unde
   const value = normalizeText(voicePreference || "");
 
   if (value.includes("male")) {
-    return "cedar";
-  }
-
-  if (value.includes("british")) {
     return "ash";
   }
 
-  return "marin";
+  if (value.includes("british")) {
+    return "verse";
+  }
+
+  if (value.includes("professional")) {
+    return "coral";
+  }
+
+  return "coral";
 }
 
 function formatCurrentBusinessDate(timezone: string) {
@@ -377,6 +381,17 @@ export class TelephonyService {
       `Telephony consent message: ${consentMessage}`,
       "Speak only in clear, natural English.",
       "Use short, natural spoken sentences that sound like a real receptionist.",
+      "Sound like a polished, professional front-desk sales and service representative.",
+      "Your tone should be calm, confident, warm, and conversion-focused.",
+      "Your goal is to convert interest into a clear next step such as an order request, booking request, callback request, or confirmed follow-up.",
+      "Be helpful and persuasive, but never pushy, robotic, or misleading.",
+      "When appropriate, guide the caller toward the best next action using only the saved business data.",
+      "Answer quickly after the caller finishes, without long pauses.",
+      "Keep your first response concise, then ask one focused follow-up question.",
+      "Do not speak twice in a row unless the caller has clearly responded.",
+      "Do not add filler like repeated thank-yous or extra closing lines unless the call is ending.",
+      "Use professional sales language when appropriate, such as offering the next suitable option, helping the caller choose, or moving toward a booking, order, or callback.",
+      "If you cannot fully complete the request from saved data, still move the conversation toward a high-conversion next step like capturing a callback, pending request, or staff follow-up.",
       "Do not switch languages unless the caller clearly asks for another language.",
       "Use only the information provided by the business configuration.",
       "Never invent operating hours, prices, or appointment availability.",
@@ -588,11 +603,8 @@ export class TelephonyService {
     if (callHandlingMode === "LIVE_AI" || callHandlingMode === "HYBRID") {
       const wsBaseUrl = baseUrl.replace(/^http/i, "ws");
       const streamUrl = `${wsBaseUrl}/ws/twilio-media?businessId=${encodeURIComponent(businessId)}`;
-      const intro = [greeting, consentMessage, emergencyMessage].filter(Boolean);
 
-      return `<Response>${intro
-        .map((line) => `<Say voice="alice">${escapeXml(line)}</Say>`)
-        .join("")}<Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /></Stream></Connect></Response>`;
+      return `<Response><Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /></Stream></Connect></Response>`;
     }
 
     const lines = [
@@ -716,6 +728,10 @@ export class TelephonyService {
     let openAiSocket: WebSocket | null = null;
     let currentCallId = "";
     let activeBusinessName = "The business";
+    let activeGreeting = "Thank you for calling. How can I help you today?";
+    let activeConsentMessage = "Calls may be recorded and transcribed for service quality and follow-up.";
+    let activeEmergencyPrompt = "";
+    let introSent = false;
     let latestCallerTranscript = "";
     let latestAssistantTranscript = "";
     const callerTurns: string[] = [];
@@ -739,6 +755,32 @@ export class TelephonyService {
       });
     };
 
+    const sendOpeningGreeting = () => {
+      if (!openAiSocket || openAiSocket.readyState !== WebSocket.OPEN || introSent) {
+        return;
+      }
+
+      introSent = true;
+      openAiSocket.send(
+        JSON.stringify({
+          type: "response.create",
+          response: {
+            output_modalities: ["audio"],
+            instructions: [
+              activeGreeting,
+              activeConsentMessage,
+              activeEmergencyPrompt,
+              "Start speaking now with a smooth professional receptionist greeting.",
+              "End with: How can I help you today?",
+              "Do not wait for the caller before saying this opening greeting.",
+            ]
+              .filter(Boolean)
+              .join(" "),
+          },
+        }),
+      );
+    };
+
     const initializeOpenAiBridge = async (activeBusinessId: string) => {
       const business = await this.prisma.business.findUnique({
         where: { id: activeBusinessId },
@@ -751,6 +793,17 @@ export class TelephonyService {
       }
 
       activeBusinessName = business.name;
+      const rules = readRules(business.answeringRules);
+      const telephony =
+        rules.telephony && typeof rules.telephony === "object" && !Array.isArray(rules.telephony)
+          ? (rules.telephony as Record<string, unknown>)
+          : {};
+      activeGreeting = business.greetingMessage?.trim() || `Thank you for calling ${business.name}. How can I help you today?`;
+      activeConsentMessage =
+        typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
+          ? telephony.consentMessage.trim()
+          : "This call may be recorded and transcribed for service quality and follow-up.";
+      activeEmergencyPrompt = business.medicalModeEnabled ? "If this is a medical emergency, please call 911 immediately." : "";
 
       const apiKey = process.env.OPENAI_API_KEY;
 
@@ -792,7 +845,7 @@ export class TelephonyService {
                   },
                   turn_detection: {
                     type: "semantic_vad",
-                    eagerness: "low",
+                    eagerness: "high",
                     interrupt_response: false,
                     create_response: true,
                   },
@@ -802,7 +855,7 @@ export class TelephonyService {
                     type: "audio/pcmu",
                   },
                   voice: session.voice,
-                  speed: 0.94,
+                  speed: 1.0,
                 },
               },
             },
@@ -847,6 +900,10 @@ export class TelephonyService {
           this.logger.error(
             `OpenAI realtime error for businessId=${activeBusinessId}: ${JSON.stringify(event)}`,
           );
+        }
+
+        if (event.type === "session.updated" && !introSent) {
+          setTimeout(() => sendOpeningGreeting(), 250);
         }
 
         if (event.type === "conversation.item.input_audio_transcription.completed" && typeof event.transcript === "string") {
