@@ -3,7 +3,13 @@ import { BusinessCategory, UserRole } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { BusinessMemberCreateInput } from "./business-members.schemas";
-import { BusinessAiSettingsInput, BusinessOnboardingInput, BusinessTelephonySettingsInput } from "./businesses.schemas";
+import {
+  BusinessAiSettingsInput,
+  BusinessMenuUpdateInput,
+  BusinessOnboardingInput,
+  BusinessProfileUpdateInput,
+  BusinessTelephonySettingsInput,
+} from "./businesses.schemas";
 
 const medicalCategories = new Set<BusinessCategory>([
   BusinessCategory.CLINIC,
@@ -27,6 +33,27 @@ function hashPassword(password: string) {
 
 function readBusinessRules(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function extractMenuItems(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const rules = value as Record<string, unknown>;
+  const menu = rules.menu;
+
+  if (!menu || typeof menu !== "object" || Array.isArray(menu)) {
+    return [];
+  }
+
+  const items = (menu as Record<string, unknown>).items;
+
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.filter((item) => item && typeof item === "object" && !Array.isArray(item));
 }
 
 @Injectable()
@@ -121,6 +148,86 @@ export class BusinessesService {
         aiEnabled: business.aiEnabled,
         timezone: business.timezone,
         telephonySettings: readBusinessRules(business.answeringRules).telephony ?? null,
+        menuItems: extractMenuItems(business.answeringRules),
+      },
+    };
+  }
+
+  async updateProfile(businessId: string, input: BusinessProfileUpdateInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    const business = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        name: input.businessName.trim(),
+        phoneNumber: input.phoneNumber.trim(),
+        timezone: input.timezone.trim(),
+        address: input.address.trim(),
+        description: input.description.trim(),
+        servicesSummary: input.servicesSummary.trim(),
+        priceListSummary: input.priceListSummary.trim() || null,
+        officeHours: input.officeHours,
+      },
+    });
+
+    return {
+      message: "Business profile updated successfully.",
+      business: {
+        id: business.id,
+        name: business.name,
+        phoneNumber: business.phoneNumber,
+        timezone: business.timezone,
+        address: business.address,
+        description: business.description,
+        servicesSummary: business.servicesSummary,
+        priceListSummary: business.priceListSummary,
+        officeHours: business.officeHours,
+      },
+    };
+  }
+
+  async updateMenu(businessId: string, input: BusinessMenuUpdateInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    const previousRules = readBusinessRules(existing.answeringRules);
+    const nextMenuItems = input.items.map((item) => ({
+      name: item.name.trim(),
+      category: item.category.trim(),
+      description: item.description.trim(),
+      price: item.price.trim(),
+      available: item.available,
+    }));
+
+    const business = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        answeringRules: {
+          ...previousRules,
+          menu: {
+            items: nextMenuItems,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    return {
+      message: "Menu updated successfully.",
+      business: {
+        id: business.id,
+        menuItems: extractMenuItems(business.answeringRules),
       },
     };
   }

@@ -1,7 +1,13 @@
 import { Body, Controller, Get, Param, Patch } from "@nestjs/common";
 import { businessMemberCreateSchema } from "./business-members.schemas";
 import { BusinessesService } from "./businesses.service";
-import { businessAiSettingsSchema, businessOnboardingSchema, businessTelephonySettingsSchema } from "./businesses.schemas";
+import {
+  businessAiSettingsSchema,
+  businessMenuUpdateSchema,
+  businessOnboardingSchema,
+  businessProfileUpdateSchema,
+  businessTelephonySettingsSchema,
+} from "./businesses.schemas";
 
 @Controller("businesses")
 export class BusinessesController {
@@ -10,6 +16,18 @@ export class BusinessesController {
   @Get(":businessId")
   async getBusiness(@Param("businessId") businessId: string) {
     return this.businessesService.getBusinessById(businessId);
+  }
+
+  @Patch(":businessId/profile")
+  async updateProfile(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = businessProfileUpdateSchema.parse(body);
+    return this.businessesService.updateProfile(businessId, input);
+  }
+
+  @Patch(":businessId/menu")
+  async updateMenu(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = businessMenuUpdateSchema.parse(body);
+    return this.businessesService.updateMenu(businessId, input);
   }
 
   @Get(":businessId/members")

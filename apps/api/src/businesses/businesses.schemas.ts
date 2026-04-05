@@ -47,3 +47,30 @@ export const businessTelephonySettingsSchema = z.object({
 });
 
 export type BusinessTelephonySettingsInput = z.infer<typeof businessTelephonySettingsSchema>;
+
+export const businessProfileUpdateSchema = z.object({
+  businessName: z.string().min(2),
+  phoneNumber: z.string().min(7),
+  timezone: z.string().min(3),
+  address: z.string().min(4),
+  description: z.string().optional().default(""),
+  servicesSummary: z.string().optional().default(""),
+  priceListSummary: z.string().optional().default(""),
+  officeHours: z.array(z.string()).default([]),
+});
+
+export type BusinessProfileUpdateInput = z.infer<typeof businessProfileUpdateSchema>;
+
+export const businessMenuItemSchema = z.object({
+  name: z.string().min(2),
+  category: z.string().min(2),
+  description: z.string().optional().default(""),
+  price: z.string().optional().default(""),
+  available: z.boolean().default(true),
+});
+
+export const businessMenuUpdateSchema = z.object({
+  items: z.array(businessMenuItemSchema).default([]),
+});
+
+export type BusinessMenuUpdateInput = z.infer<typeof businessMenuUpdateSchema>;

@@ -26,6 +26,13 @@ type BusinessData = {
     officeHours?: unknown;
     answeringRules?: unknown;
     telephonySettings?: unknown;
+    menuItems?: Array<{
+      name: string;
+      category: string;
+      description?: string;
+      price?: string;
+      available?: boolean;
+    }>;
   };
 };
 

@@ -6,7 +6,7 @@ import { clearSession } from "../../lib/session";
 import { PortalData } from "./use-portal-data";
 
 type PortalShellProps = {
-  active: "dashboard" | "profile" | "settings" | "telephony" | "calls" | "team" | "billing";
+  active: "dashboard" | "profile" | "menu" | "settings" | "telephony" | "calls" | "team" | "billing";
   title: string;
   subtitle: string;
   portal: PortalData;
@@ -19,6 +19,13 @@ export function PortalShell({ active, title, subtitle, portal, children }: Porta
   const navItems = [
     { key: "dashboard", label: "Dashboard", icon: "D", href: `/portal/dashboard?businessId=${businessId}`, visible: true },
     { key: "profile", label: "Business Profile", icon: "P", href: `/portal/profile?businessId=${businessId}`, visible: true },
+    {
+      key: "menu",
+      label: "Menu",
+      icon: "M",
+      href: `/portal/menu?businessId=${businessId}`,
+      visible: portal.canEditConfiguration,
+    },
     {
       key: "settings",
       label: "AI Settings",

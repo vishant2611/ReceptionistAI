@@ -89,18 +89,194 @@ function formatOfficeHours(officeHours: unknown) {
 }
 
 function buildRealtimeSummary(callerTurns: string[]) {
-  if (callerTurns.length === 0) {
+  const structuredSummary = extractStructuredSummary(callerTurns);
+
+  if (structuredSummary) {
+    return structuredSummary;
+  }
+
+  const meaningfulTurns = callerTurns.filter((turn) => !isLowQualityEnglishTranscript(turn));
+  const summaryTurns = meaningfulTurns.filter(isHighSignalSummaryTurn);
+  const activeTurns = summaryTurns.length > 0 ? summaryTurns : meaningfulTurns;
+
+  if (activeTurns.length === 0) {
     return "Realtime AI handled the inbound call.";
   }
 
-  if (callerTurns.length === 1) {
-    return `Caller asked about: ${callerTurns[0].slice(0, 140)}.`;
+  if (activeTurns.length === 1) {
+    return `Caller asked about: ${activeTurns[0].slice(0, 140)}.`;
   }
 
-  return `Caller discussed ${callerTurns.length} topics, including: ${callerTurns
-    .slice(0, 2)
+  return `Caller discussed ${activeTurns.length} topics, including: ${activeTurns
+    .slice(-2)
     .map((turn) => turn.slice(0, 70))
     .join(" | ")}.`;
+}
+
+function isInternalTranscriptArtifact(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized.length === 0 ||
+    normalized.startsWith("receptionist call for ") ||
+    normalized.startsWith("expect english words related to ")
+  );
+}
+
+function countMatches(value: string, expression: RegExp) {
+  const matches = value.match(expression);
+  return matches ? matches.length : 0;
+}
+
+function isLowQualityEnglishTranscript(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return true;
+  }
+
+  if (trimmed.length <= 2) {
+    return true;
+  }
+
+  if (trimmed.length <= 4 && !/\d/.test(trimmed) && !/\s/.test(trimmed)) {
+    return true;
+  }
+
+  const latinLetters = countMatches(trimmed, /[A-Za-z]/g);
+  const nonLatinLetters = countMatches(trimmed, /[^\u0000-\u007F]/g);
+  const digits = countMatches(trimmed, /[0-9]/g);
+
+  if (digits > 0 && latinLetters === 0 && nonLatinLetters === 0) {
+    return false;
+  }
+
+  if (latinLetters === 0 && nonLatinLetters > 0) {
+    return true;
+  }
+
+  if (nonLatinLetters > latinLetters && latinLetters < 6) {
+    return true;
+  }
+
+  return false;
+}
+
+function isHighSignalSummaryTurn(value: string) {
+  const normalized = normalizeText(value);
+
+  if (normalized.length < 4) {
+    return false;
+  }
+
+  if (/^[\d\s\-()+]+$/.test(normalized)) {
+    return false;
+  }
+
+  return [
+    "hour",
+    "open",
+    "close",
+    "service",
+    "menu",
+    "salad",
+    "soup",
+    "price",
+    "cost",
+    "book",
+    "reservation",
+    "catering",
+    "manager",
+    "call me",
+    "callback",
+    "pickup",
+    "order",
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function extractStructuredSummary(callerTurns: string[]) {
+  const meaningfulTurns = callerTurns.filter((turn) => !isLowQualityEnglishTranscript(turn));
+
+  if (meaningfulTurns.length === 0) {
+    return "";
+  }
+
+  const latestOrderTurn = [...meaningfulTurns]
+    .reverse()
+    .find((turn) => /(order|pickup|deliver|delivery|for\s+\d+|today|tomorrow|p\.m\.|a\.m\.)/i.test(turn));
+  const latestCallbackTurn = [...meaningfulTurns]
+    .reverse()
+    .find((turn) => /(call me|callback|manager|phone number|reach me)/i.test(turn));
+
+  if (latestOrderTurn) {
+    const callbackSuffix = latestCallbackTurn ? " Contact details were also discussed for follow-up." : "";
+    return `Caller placed a pending order request: ${latestOrderTurn.slice(0, 180)}.${callbackSuffix}`.replace("..", ".");
+  }
+
+  if (latestCallbackTurn) {
+    return `Caller requested follow-up: ${latestCallbackTurn.slice(0, 180)}.`;
+  }
+
+  return "";
+}
+
+function extractMenuCatalog(rules: Record<string, unknown>) {
+  const menu = rules.menu;
+
+  if (!menu || typeof menu !== "object" || Array.isArray(menu)) {
+    return "";
+  }
+
+  const items = (menu as Record<string, unknown>).items;
+
+  if (!Array.isArray(items)) {
+    return "";
+  }
+
+  const normalizedItems = items
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    .map((item) => ({
+      name: String(item.name ?? "").trim(),
+      category: String(item.category ?? "").trim(),
+      description: String(item.description ?? "").trim(),
+      price: String(item.price ?? "").trim(),
+      available: item.available !== false,
+    }))
+    .filter((item) => item.name.length > 0 && item.category.length > 0);
+
+  if (normalizedItems.length === 0) {
+    return "";
+  }
+
+  return normalizedItems
+    .map((item) =>
+      `${item.name} (${item.category})${item.price ? ` - ${item.price}` : ""}${item.available ? "" : " - unavailable"}${item.description ? `: ${item.description}` : ""}`,
+    )
+    .join("; ");
+}
+
+function collectTranscriptText(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectTranscriptText(entry));
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    return [
+      ...collectTranscriptText(record.transcript),
+      ...collectTranscriptText(record.text),
+      ...collectTranscriptText(record.audio_transcript),
+      ...collectTranscriptText(record.content),
+      ...collectTranscriptText(record.arguments),
+    ];
+  }
+
+  return [];
 }
 
 function defaultServiceSummary(category: string) {
@@ -175,6 +351,7 @@ export class TelephonyService {
       typeof rules.callHandlingMode === "string" ? rules.callHandlingMode : "LIVE_AI";
     const answerMode =
       typeof rules.primaryMode === "string" ? rules.primaryMode : "ALL_CALLS";
+    const menuCatalog = extractMenuCatalog(rules);
     const consentMessage =
       typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
         ? telephony.consentMessage.trim()
@@ -186,6 +363,7 @@ export class TelephonyService {
       `Greeting to use: ${business.greetingMessage || `Thank you for calling ${business.name}. How can I help you today?`}`,
       `Business summary: ${business.description || "No detailed summary provided yet."}`,
       `Services: ${business.servicesSummary || business.description || defaultServiceSummary(business.category)}`,
+      `Structured menu items: ${menuCatalog || "No structured menu items saved yet."}`,
       `Pricing or fees: ${business.priceListSummary || "If explicit pricing is missing, say the team will confirm the exact amount."}`,
       `Operating hours: ${officeHoursInstruction}.`,
       `Address: ${business.address || "No address configured yet."}`,
@@ -202,6 +380,15 @@ export class TelephonyService {
       "Do not switch languages unless the caller clearly asks for another language.",
       "Use only the information provided by the business configuration.",
       "Never invent operating hours, prices, or appointment availability.",
+      "Never name a specific menu item, dish, soup, salad, dessert, or drink unless that exact item is present in the saved business summary, services summary, or pricing data.",
+      "If structured menu items are present, prefer those exact items over broad summary text.",
+      "If the caller asks about menu categories like soups or salads and exact items are not stored, mention only the saved category or price range and say the exact item list is not loaded yet.",
+      "For restaurant or bakery calls, treat the conversation as an order request unless the exact item list, quantities, fulfillment method, and contact details are explicitly confirmed by the caller.",
+      "Do not claim that an order is fully confirmed unless those details are clearly collected.",
+      "If the caller mentions an item that is not present in saved business data, say you can note the request for staff review instead of pretending it is available.",
+      "Never repeat or summarize a caller name, quantity, phone number, pickup time, or order item unless the caller explicitly said it clearly in the conversation.",
+      "If a caller gives only partial order details, explicitly ask for the missing fields instead of guessing.",
+      "If you are uncertain about a name, phone number, quantity, or item, say that you did not catch it clearly and ask the caller to repeat it.",
       "When discussing dates or weekdays, rely on the current local business date provided above.",
       "If the caller asks for services and the services summary is sparse, use the business summary as fallback before saying details are still being confirmed.",
       "If the caller asks about hours and the office hours are not configured, say the hours are still being finalized in the portal and offer to capture a callback request.",
@@ -209,6 +396,8 @@ export class TelephonyService {
       "If this is a medical business and the caller describes an emergency, deliver the emergency guidance immediately and do not continue normal intake.",
       "Let the caller finish speaking before you answer. Do not interrupt unless they clearly stop.",
       "Capture caller intent, contact details, and any order or booking information clearly.",
+      "At the end of an order-related call, summarize the request cautiously as a pending request for staff unless it is fully confirmed from the saved data.",
+      "Be conservative. It is better to ask one extra clarifying question than to guess a missing detail.",
     ].join("\n");
   }
 
@@ -600,7 +789,6 @@ export class TelephonyService {
                   transcription: {
                     model: "gpt-4o-mini-transcribe",
                     language: "en",
-                    prompt: `Receptionist call for ${business.name}. Expect English words related to ${business.category.toLowerCase()}, services, pricing, appointments, dates, and office hours.`,
                   },
                   turn_detection: {
                     type: "semantic_vad",
@@ -625,6 +813,24 @@ export class TelephonyService {
       openAiSocket.on("message", async (message) => {
         const raw = message.toString();
         let event: Record<string, unknown>;
+        const appendCallerTranscript = async (transcriptValue: string) => {
+          const cleaned = transcriptValue.trim();
+
+          if (
+            !cleaned ||
+            isInternalTranscriptArtifact(cleaned) ||
+            isLowQualityEnglishTranscript(cleaned) ||
+            seenCallerTurns.has(cleaned)
+          ) {
+            return;
+          }
+
+          latestCallerTranscript = cleaned;
+          seenCallerTurns.add(cleaned);
+          callerTurns.push(cleaned);
+          transcriptLines.push(`Caller: ${cleaned}`);
+          await persistTranscript(buildRealtimeSummary(callerTurns));
+        };
 
         try {
           event = JSON.parse(raw) as Record<string, unknown>;
@@ -637,16 +843,14 @@ export class TelephonyService {
           this.logger.debug(`OpenAI realtime event for businessId=${activeBusinessId}: ${event.type}`);
         }
 
-        if (event.type === "conversation.item.input_audio_transcription.completed" && typeof event.transcript === "string") {
-          latestCallerTranscript = event.transcript.trim();
-          if (latestCallerTranscript && !seenCallerTurns.has(latestCallerTranscript)) {
-            seenCallerTurns.add(latestCallerTranscript);
-            callerTurns.push(latestCallerTranscript);
-            transcriptLines.push(`Caller: ${latestCallerTranscript}`);
-          }
-          await persistTranscript(
-            buildRealtimeSummary(callerTurns),
+        if (event.type === "error") {
+          this.logger.error(
+            `OpenAI realtime error for businessId=${activeBusinessId}: ${JSON.stringify(event)}`,
           );
+        }
+
+        if (event.type === "conversation.item.input_audio_transcription.completed" && typeof event.transcript === "string") {
+          await appendCallerTranscript(event.transcript);
         }
 
         if (event.type === "response.output_audio_transcript.done" && typeof event.transcript === "string") {
@@ -659,6 +863,18 @@ export class TelephonyService {
           await persistTranscript(
             buildRealtimeSummary(callerTurns),
           );
+        }
+
+        if (
+          event.type === "conversation.item.done" ||
+          event.type === "conversation.item.created" ||
+          event.type === "conversation.item.input_audio_transcription.delta"
+        ) {
+          const transcriptCandidates = collectTranscriptText(event);
+
+          for (const candidate of transcriptCandidates) {
+            await appendCallerTranscript(candidate);
+          }
         }
 
         if ((event.type === "response.output_audio.delta" || event.type === "response.audio.delta") && typeof event.delta === "string" && streamSid) {
