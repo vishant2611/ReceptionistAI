@@ -28,6 +28,11 @@ type TwilioSpeechPayload = {
   Confidence?: string;
 };
 
+type LiveRecordingContext = {
+  callbackUrl?: string;
+  started: boolean;
+};
+
 function escapeXml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -47,6 +52,20 @@ function inferBaseUrl(headers: Record<string, string | string[] | undefined>) {
   const proto = Array.isArray(protoHeader) ? protoHeader[0] : protoHeader;
   const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
   return `${proto || "http"}://${host}`;
+}
+
+function encodeFormBody(values: Record<string, string>) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(values)) {
+    params.set(key, value);
+  }
+
+  return params.toString();
+}
+
+function getTwilioPlaybackUrl(recordingUrl: string) {
+  return /^https:\/\/api\.twilio\.com\/.+\/Recordings\/[^./?]+$/i.test(recordingUrl) ? `${recordingUrl}.mp3` : recordingUrl;
 }
 
 function normalizeText(value: string) {
@@ -603,8 +622,9 @@ export class TelephonyService {
     if (callHandlingMode === "LIVE_AI" || callHandlingMode === "HYBRID") {
       const wsBaseUrl = baseUrl.replace(/^http/i, "ws");
       const streamUrl = `${wsBaseUrl}/ws/twilio-media?businessId=${encodeURIComponent(businessId)}`;
+      const recordingCallbackUrl = `${baseUrl}/api/telephony/twilio/voice/${businessId}/recording-complete`;
 
-      return `<Response><Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /></Stream></Connect></Response>`;
+      return `<Response><Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /><Parameter name="recordingCallbackUrl" value="${escapeXml(recordingCallbackUrl)}" /></Stream></Connect></Response>`;
     }
 
     const lines = [
@@ -659,6 +679,82 @@ export class TelephonyService {
     }
 
     return { ok: true };
+  }
+
+  async getRecordingStream(callId: string) {
+    const call = await this.prisma.call.findUnique({
+      where: { id: callId },
+    });
+
+    if (!call?.recordingUrl) {
+      throw new NotFoundException("Recording not found.");
+    }
+
+    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+
+    if (!accountSid || !authToken) {
+      throw new ServiceUnavailableException("Twilio credentials are not configured yet.");
+    }
+
+    const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+    const response = await fetch(getTwilioPlaybackUrl(call.recordingUrl), {
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+      },
+    });
+
+    if (!response.ok || !response.body) {
+      throw new ServiceUnavailableException("Unable to load recording audio from Twilio.");
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    return {
+      contentType: response.headers.get("content-type") || "audio/mpeg",
+      body: Buffer.from(arrayBuffer),
+    };
+  }
+
+  private async startTwilioLiveRecording(callSid: string, context: LiveRecordingContext) {
+    if (context.started || !context.callbackUrl) {
+      return;
+    }
+
+    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+
+    if (!accountSid || !authToken) {
+      this.logger.warn(`Twilio live recording skipped for CallSid=${callSid} because credentials are not configured.`);
+      return;
+    }
+
+    const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Calls/${encodeURIComponent(callSid)}/Recordings.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: encodeFormBody({
+          RecordingStatusCallback: context.callbackUrl,
+          RecordingStatusCallbackMethod: "POST",
+          RecordingChannels: "mono",
+          RecordingTrack: "both",
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`Twilio live recording start failed for CallSid=${callSid}: ${errorText}`);
+      return;
+    }
+
+    context.started = true;
+    this.logger.log(`Twilio live recording started for CallSid=${callSid}.`);
   }
 
   async handleLiveAiTurn(businessId: string, payload: TwilioSpeechPayload) {
@@ -732,8 +828,13 @@ export class TelephonyService {
     let activeConsentMessage = "Calls may be recorded and transcribed for service quality and follow-up.";
     let activeEmergencyPrompt = "";
     let introSent = false;
+    let responseInFlight = false;
     let latestCallerTranscript = "";
     let latestAssistantTranscript = "";
+    const liveRecordingContext: LiveRecordingContext = {
+      callbackUrl: "",
+      started: false,
+    };
     const callerTurns: string[] = [];
     const assistantTurns: string[] = [];
     const transcriptLines: string[] = [];
@@ -761,6 +862,7 @@ export class TelephonyService {
       }
 
       introSent = true;
+      responseInFlight = true;
       openAiSocket.send(
         JSON.stringify({
           type: "response.create",
@@ -847,7 +949,7 @@ export class TelephonyService {
                     type: "semantic_vad",
                     eagerness: "high",
                     interrupt_response: false,
-                    create_response: true,
+                    create_response: false,
                   },
                 },
                 output: {
@@ -875,7 +977,7 @@ export class TelephonyService {
             isLowQualityEnglishTranscript(cleaned) ||
             seenCallerTurns.has(cleaned)
           ) {
-            return;
+            return "";
           }
 
           latestCallerTranscript = cleaned;
@@ -883,6 +985,7 @@ export class TelephonyService {
           callerTurns.push(cleaned);
           transcriptLines.push(`Caller: ${cleaned}`);
           await persistTranscript(buildRealtimeSummary(callerTurns));
+          return cleaned;
         };
 
         try {
@@ -897,6 +1000,7 @@ export class TelephonyService {
         }
 
         if (event.type === "error") {
+          responseInFlight = false;
           this.logger.error(
             `OpenAI realtime error for businessId=${activeBusinessId}: ${JSON.stringify(event)}`,
           );
@@ -907,7 +1011,19 @@ export class TelephonyService {
         }
 
         if (event.type === "conversation.item.input_audio_transcription.completed" && typeof event.transcript === "string") {
-          await appendCallerTranscript(event.transcript);
+          const capturedTranscript = await appendCallerTranscript(event.transcript);
+
+          if (capturedTranscript && introSent && !responseInFlight) {
+            responseInFlight = true;
+            openAiSocket?.send(
+              JSON.stringify({
+                type: "response.create",
+                response: {
+                  output_modalities: ["audio"],
+                },
+              }),
+            );
+          }
         }
 
         if (event.type === "response.output_audio_transcript.done" && typeof event.transcript === "string") {
@@ -920,6 +1036,10 @@ export class TelephonyService {
           await persistTranscript(
             buildRealtimeSummary(callerTurns),
           );
+        }
+
+        if (event.type === "response.done") {
+          responseInFlight = false;
         }
 
         if (
@@ -998,6 +1118,8 @@ export class TelephonyService {
             : {};
         businessId =
           (typeof customParameters.businessId === "string" ? customParameters.businessId : "") || businessId;
+        liveRecordingContext.callbackUrl =
+          typeof customParameters.recordingCallbackUrl === "string" ? customParameters.recordingCallbackUrl : "";
 
         if (!businessId) {
           this.logger.warn("Twilio media stream started without a businessId in URL or custom parameters.");
@@ -1026,6 +1148,8 @@ export class TelephonyService {
             },
           });
         }
+
+        await this.startTwilioLiveRecording(callSid, liveRecordingContext);
         return;
       }
 

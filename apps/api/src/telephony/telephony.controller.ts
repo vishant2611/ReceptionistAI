@@ -1,5 +1,5 @@
-import { All, Body, Controller, Header, Param, Req } from "@nestjs/common";
-import { Request } from "express";
+import { All, Body, Controller, Header, Param, Req, Res } from "@nestjs/common";
+import { Request, Response } from "express";
 import { TelephonyService } from "./telephony.service";
 
 @Controller("telephony")
@@ -55,5 +55,16 @@ export class TelephonyController {
     @Body() body: string,
   ) {
     return this.telephonyService.createRealtimeSessionFromSdp(businessId, body);
+  }
+
+  @All("recordings/:callId")
+  async streamRecording(
+    @Param("callId") callId: string,
+    @Res() res: Response,
+  ) {
+    const recording = await this.telephonyService.getRecordingStream(callId);
+    res.setHeader("Content-Type", recording.contentType);
+    res.setHeader("Cache-Control", "private, max-age=60");
+    res.send(recording.body);
   }
 }

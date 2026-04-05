@@ -1046,6 +1046,27 @@ img {
   margin-top: 8px;
 }
 
+.call-recording-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.call-recording-link {
+  color: var(--brand-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.call-recording-link:hover {
+  text-decoration: underline;
+}
+
+.call-recording-block audio {
+  width: min(100%, 240px);
+  height: 34px;
+}
+
 .portal-topbar {
   display: flex;
   justify-content: space-between;

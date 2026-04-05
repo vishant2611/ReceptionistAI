@@ -5,6 +5,8 @@ import { apiRequest } from "../../lib/api";
 import { PortalShell } from "./portal-shell";
 import { usePortalData } from "./use-portal-data";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
 type Props = {
   businessId?: string;
 };
@@ -36,6 +38,14 @@ function formatCallTime(value: string) {
 
 function formatStatusLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getPlaybackUrl(callId: string, recordingUrl?: string | null) {
+  if (!recordingUrl) {
+    return "";
+  }
+
+  return `${API_URL}/api/telephony/recordings/${callId}`;
 }
 
 export function PortalCallLogsPage({ businessId = "" }: Props) {
@@ -117,7 +127,23 @@ export function PortalCallLogsPage({ businessId = "" }: Props) {
                   </div>
                   <div>
                     <strong>{call.callerNumber || "No phone captured"}</strong>
-                    <span>{call.recordingUrl ? "Recording available" : "No recording link"}</span>
+                    {call.recordingUrl ? (
+                      <div className="call-recording-block">
+                        <a
+                          className="call-recording-link"
+                          href={getPlaybackUrl(call.id, call.recordingUrl)}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Listen to recording
+                        </a>
+                        <audio controls preload="none" src={getPlaybackUrl(call.id, call.recordingUrl)}>
+                          Your browser does not support audio playback.
+                        </audio>
+                      </div>
+                    ) : (
+                      <span>No recording link</span>
+                    )}
                   </div>
                   <div>
                     <span className="inline-badge">{formatStatusLabel(call.status)}</span>
