@@ -645,6 +645,9 @@ export class TelephonyService {
   }
 
   async handleRecordingComplete(businessId: string, payload: TwilioRecordingPayload) {
+    this.logger.log(
+      `Twilio recording callback received for businessId=${businessId}, CallSid=${payload.CallSid || "unknown"}, RecordingUrl=${payload.RecordingUrl || "missing"}.`,
+    );
     const call = await this.findCallForTwilioEvent(businessId, payload);
 
     if (call) {
@@ -658,6 +661,11 @@ export class TelephonyService {
           transcript: `${call.transcript || ""}\nRecording complete. RecordingUrl=${payload.RecordingUrl || "unknown"}, Duration=${payload.RecordingDuration || "unknown"}, EndedBy=${payload.Digits || "timeout"}.`.trim(),
         },
       });
+      this.logger.log(`Saved recording URL for callId=${call.id}.`);
+    } else {
+      this.logger.warn(
+        `Twilio recording callback could not find a matching call for businessId=${businessId}, CallSid=${payload.CallSid || "unknown"}.`,
+      );
     }
 
     return `<Response><Say voice="alice">Thank you. Your message has been recorded and will be reviewed by the team.</Say><Hangup/></Response>`;
@@ -754,7 +762,7 @@ export class TelephonyService {
     }
 
     context.started = true;
-    this.logger.log(`Twilio live recording started for CallSid=${callSid}.`);
+    this.logger.log(`Twilio live recording started for CallSid=${callSid}. callback=${context.callbackUrl}`);
   }
 
   async handleLiveAiTurn(businessId: string, payload: TwilioSpeechPayload) {
