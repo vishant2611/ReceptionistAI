@@ -217,6 +217,93 @@ function isHighSignalSummaryTurn(value: string) {
   ].some((keyword) => normalized.includes(keyword));
 }
 
+function toSentenceCase(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function extractRequestedCategory(callerTurns: string[]) {
+  const categories = [
+    "salad",
+    "salads",
+    "soup",
+    "soups",
+    "pasta",
+    "vegan salad",
+    "dessert",
+    "desserts",
+    "reservation",
+    "appointment",
+    "callback",
+  ];
+
+  for (const turn of [...callerTurns].reverse()) {
+    const normalized = normalizeText(turn);
+
+    for (const category of categories) {
+      if (normalized.includes(category)) {
+        return category;
+      }
+    }
+  }
+
+  return "";
+}
+
+function extractQuantityPhrase(callerTurns: string[]) {
+  const patterns = [
+    /\b(\d+)\s+(plate|plates|portion|portions|order|orders|salad|salads|soup|soups|pasta|pastas)\b/i,
+    /\bfor\s+(\d+)\s+(people|person)\b/i,
+  ];
+
+  for (const turn of [...callerTurns].reverse()) {
+    for (const pattern of patterns) {
+      const match = turn.match(pattern);
+
+      if (match) {
+        return match[0];
+      }
+    }
+  }
+
+  return "";
+}
+
+function extractPickupTime(callerTurns: string[]) {
+  const patterns = [
+    /\b\d{1,2}\s*(?::\d{2})?\s*(a\.m\.|p\.m\.|am|pm)\b/i,
+    /\btoday\b/i,
+    /\btomorrow\b/i,
+  ];
+
+  const parts: string[] = [];
+
+  for (const turn of [...callerTurns].reverse()) {
+    for (const pattern of patterns) {
+      const match = turn.match(pattern);
+
+      if (match) {
+        const value = match[0].toLowerCase();
+
+        if (!parts.includes(value)) {
+          parts.push(value);
+        }
+      }
+    }
+
+    if (parts.length >= 2) {
+      break;
+    }
+  }
+
+  return parts.join(" ");
+}
+
 function extractStructuredSummary(callerTurns: string[]) {
   const meaningfulTurns = callerTurns.filter((turn) => !isLowQualityEnglishTranscript(turn));
 
@@ -232,7 +319,21 @@ function extractStructuredSummary(callerTurns: string[]) {
     .find((turn) => /(call me|callback|manager|phone number|reach me)/i.test(turn));
 
   if (latestOrderTurn) {
+    const itemCategory = extractRequestedCategory(meaningfulTurns);
+    const quantityPhrase = extractQuantityPhrase(meaningfulTurns);
+    const pickupTime = extractPickupTime(meaningfulTurns);
+    const parts = [
+      "Caller placed a pending order request",
+      quantityPhrase ? `for ${quantityPhrase}` : "",
+      itemCategory ? `${quantityPhrase ? "of" : "for"} ${itemCategory}` : "",
+      pickupTime ? `for ${pickupTime}` : "",
+    ].filter(Boolean);
     const callbackSuffix = latestCallbackTurn ? " Contact details were also discussed for follow-up." : "";
+
+    if (parts.length > 1) {
+      return `${toSentenceCase(parts.join(" ").replace(/\s+/g, " ").trim())}.${callbackSuffix}`.replace("..", ".");
+    }
+
     return `Caller placed a pending order request: ${latestOrderTurn.slice(0, 180)}.${callbackSuffix}`.replace("..", ".");
   }
 
@@ -651,13 +752,15 @@ export class TelephonyService {
     const call = await this.findCallForTwilioEvent(businessId, payload);
 
     if (call) {
+      const recordingSummary = payload.RecordingDuration
+        ? `Caller left a recorded message (${payload.RecordingDuration} seconds).`
+        : "Caller left a recorded message.";
+
       await this.prisma.call.update({
         where: { id: call.id },
         data: {
           recordingUrl: payload.RecordingUrl?.trim() || call.recordingUrl,
-          summary: payload.RecordingDuration
-            ? `Caller left a recorded message (${payload.RecordingDuration} seconds).`
-            : "Caller left a recorded message.",
+          summary: call.summary?.trim() ? call.summary : recordingSummary,
           transcript: `${call.transcript || ""}\nRecording complete. RecordingUrl=${payload.RecordingUrl || "unknown"}, Duration=${payload.RecordingDuration || "unknown"}, EndedBy=${payload.Digits || "timeout"}.`.trim(),
         },
       });
