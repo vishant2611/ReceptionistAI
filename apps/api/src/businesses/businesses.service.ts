@@ -5,6 +5,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BusinessMemberCreateInput } from "./business-members.schemas";
 import {
   BusinessAiSettingsInput,
+  BusinessMenuImportInput,
   BusinessMenuUpdateInput,
   BusinessOnboardingInput,
   BusinessProfileUpdateInput,
@@ -53,7 +54,122 @@ function extractMenuItems(value: unknown) {
     return [];
   }
 
-  return items.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+  return items
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => {
+      const record = item as Record<string, unknown>;
+
+      return {
+        name: String(record.name ?? "").trim(),
+        category: String(record.category ?? "").trim(),
+        description: String(record.description ?? "").trim(),
+        price: String(record.price ?? "").trim(),
+        available: record.available !== false,
+        availabilityMode:
+          record.availabilityMode === "DISABLED_TODAY" || record.availabilityMode === "DISABLED_UNTIL"
+            ? record.availabilityMode
+            : "AVAILABLE",
+        disabledUntil: String(record.disabledUntil ?? "").trim(),
+      };
+    })
+    .filter((item) => item.name.length > 0 && item.category.length > 0);
+}
+
+function extractMenuSource(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const rules = value as Record<string, unknown>;
+  const menu = rules.menu;
+
+  if (!menu || typeof menu !== "object" || Array.isArray(menu)) {
+    return null;
+  }
+
+  const source = (menu as Record<string, unknown>).source;
+
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return null;
+  }
+
+  return {
+    filename: String((source as Record<string, unknown>).filename ?? "").trim(),
+    mimeType: String((source as Record<string, unknown>).mimeType ?? "").trim(),
+    importedAt: String((source as Record<string, unknown>).importedAt ?? "").trim(),
+  };
+}
+
+function extractJsonObject(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const withoutFences = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
+  const firstBrace = withoutFences.indexOf("{");
+  const lastBrace = withoutFences.lastIndexOf("}");
+
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return withoutFences.slice(firstBrace, lastBrace + 1);
+  }
+
+  const firstBracket = withoutFences.indexOf("[");
+  const lastBracket = withoutFences.lastIndexOf("]");
+
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    return `{"items":${withoutFences.slice(firstBracket, lastBracket + 1)}}`;
+  }
+
+  return "";
+}
+
+function extractResponseText(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (typeof record.output_text === "string" && record.output_text.trim()) {
+    return record.output_text;
+  }
+
+  const output = record.output;
+
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  const parts: string[] = [];
+
+  for (const item of output) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const content = (item as Record<string, unknown>).content;
+
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const entry of content) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        continue;
+      }
+
+      const textValue = (entry as Record<string, unknown>).text;
+
+      if (typeof textValue === "string" && textValue.trim()) {
+        parts.push(textValue);
+      }
+    }
+  }
+
+  return parts.join("\n").trim();
 }
 
 @Injectable()
@@ -149,6 +265,7 @@ export class BusinessesService {
         timezone: business.timezone,
         telephonySettings: readBusinessRules(business.answeringRules).telephony ?? null,
         menuItems: extractMenuItems(business.answeringRules),
+        menuSource: extractMenuSource(business.answeringRules),
       },
     };
   }
@@ -208,7 +325,13 @@ export class BusinessesService {
       description: item.description.trim(),
       price: item.price.trim(),
       available: item.available,
+      availabilityMode: item.availabilityMode,
+      disabledUntil: item.disabledUntil.trim(),
     }));
+    const previousMenu =
+      previousRules.menu && typeof previousRules.menu === "object" && !Array.isArray(previousRules.menu)
+        ? (previousRules.menu as Record<string, unknown>)
+        : {};
 
     const business = await this.prisma.business.update({
       where: { id: businessId },
@@ -217,6 +340,7 @@ export class BusinessesService {
           ...previousRules,
           menu: {
             items: nextMenuItems,
+            source: input.source ?? previousMenu.source ?? null,
             updatedAt: new Date().toISOString(),
           },
         },
@@ -228,6 +352,148 @@ export class BusinessesService {
       business: {
         id: business.id,
         menuItems: extractMenuItems(business.answeringRules),
+        menuSource: extractMenuSource(business.answeringRules),
+      },
+    };
+  }
+
+  async importMenu(businessId: string, input: BusinessMenuImportInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey) {
+      throw new BadRequestException("OPENAI_API_KEY is required to import PDF or image menus.");
+    }
+
+    const model = "gpt-4.1-mini";
+    const isPdf = input.mimeType.toLowerCase().includes("pdf");
+    let inputItem:
+      | {
+          type: "input_file";
+          file_id: string;
+        }
+      | {
+          type: "input_image";
+          image_url: string;
+          detail: "high";
+        };
+
+    if (isPdf) {
+      const fileBuffer = Buffer.from(input.contentBase64, "base64");
+      const fileForm = new FormData();
+      fileForm.set("purpose", "user_data");
+      fileForm.set("file", new Blob([fileBuffer], { type: input.mimeType }), input.filename);
+
+      const uploadResponse = await fetch("https://api.openai.com/v1/files", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: fileForm,
+      });
+
+      const uploadPayload = (await uploadResponse.json()) as {
+        id?: string;
+        error?: { message?: string };
+      };
+
+      if (!uploadResponse.ok || !uploadPayload.id) {
+        throw new BadRequestException(uploadPayload.error?.message || "PDF upload for menu extraction failed.");
+      }
+
+      inputItem = {
+        type: "input_file",
+        file_id: uploadPayload.id,
+      };
+    } else {
+      inputItem = {
+        type: "input_image",
+        image_url: `data:${input.mimeType};base64,${input.contentBase64}`,
+        detail: "high",
+      };
+    }
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "Extract a restaurant or bakery menu into strict JSON. Return only one JSON object with this shape: {\"items\":[{\"name\":\"string\",\"category\":\"string\",\"description\":\"string\",\"price\":\"string\"}]}. Use short categories like Appetizers, Soups, Salads, Pasta, Mains, Desserts, Drinks, Bakery, Cakes. Do not include explanations. If price is missing, use an empty string.",
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "Read this uploaded menu and extract menu items into the requested JSON format.",
+              },
+              inputItem,
+            ],
+          },
+        ],
+      }),
+    });
+
+    const payload = (await response.json()) as {
+      output_text?: string;
+      output?: unknown;
+      error?: { message?: string };
+    };
+
+    if (!response.ok) {
+      throw new BadRequestException(payload.error?.message || "Menu extraction failed.");
+    }
+
+    const rawJson = extractJsonObject(extractResponseText(payload));
+
+    if (!rawJson) {
+      throw new BadRequestException("Menu extraction did not return valid structured data.");
+    }
+
+    const parsed = JSON.parse(rawJson) as {
+      items?: Array<Record<string, unknown>>;
+    };
+
+    const extractedItems = Array.isArray(parsed.items)
+      ? parsed.items
+          .map((item) => ({
+            name: String(item.name ?? "").trim(),
+            category: String(item.category ?? "").trim(),
+            description: String(item.description ?? "").trim(),
+            price: String(item.price ?? "").trim(),
+            available: true,
+            availabilityMode: "AVAILABLE",
+            disabledUntil: "",
+          }))
+          .filter((item) => item.name.length > 0 && item.category.length > 0)
+      : [];
+
+    return {
+      message: extractedItems.length > 0 ? "Menu extracted successfully. Review the items before saving." : "No menu items were extracted.",
+      items: extractedItems,
+      source: {
+        filename: input.filename,
+        mimeType: input.mimeType,
+        importedAt: new Date().toISOString(),
       },
     };
   }

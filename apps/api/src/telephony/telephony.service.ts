@@ -365,6 +365,11 @@ function extractMenuCatalog(rules: Record<string, unknown>) {
       description: String(item.description ?? "").trim(),
       price: String(item.price ?? "").trim(),
       available: item.available !== false,
+      availabilityMode:
+        item.availabilityMode === "DISABLED_TODAY" || item.availabilityMode === "DISABLED_UNTIL"
+          ? item.availabilityMode
+          : "AVAILABLE",
+      disabledUntil: String(item.disabledUntil ?? "").trim(),
     }))
     .filter((item) => item.name.length > 0 && item.category.length > 0);
 
@@ -374,7 +379,7 @@ function extractMenuCatalog(rules: Record<string, unknown>) {
 
   return normalizedItems
     .map((item) =>
-      `${item.name} (${item.category})${item.price ? ` - ${item.price}` : ""}${item.available ? "" : " - unavailable"}${item.description ? `: ${item.description}` : ""}`,
+      `${item.name} (${item.category})${item.price ? ` - ${item.price}` : ""}${item.availabilityMode === "AVAILABLE" ? " - available now" : item.availabilityMode === "DISABLED_TODAY" ? " - unavailable today" : ` - unavailable until ${item.disabledUntil || "later"}`}${item.description ? `: ${item.description}` : ""}`,
     )
     .join("; ");
 }
@@ -517,6 +522,11 @@ export class TelephonyService {
       "Never invent operating hours, prices, or appointment availability.",
       "Never name a specific menu item, dish, soup, salad, dessert, or drink unless that exact item is present in the saved business summary, services summary, or pricing data.",
       "If structured menu items are present, prefer those exact items over broad summary text.",
+      "Treat menu availability as a hard rule.",
+      "If a structured menu item is marked unavailable today, do not offer it as available.",
+      "If a structured menu item is marked unavailable until a specific time, do not offer it before that time.",
+      "If a caller asks for an unavailable item, explain that it is currently unavailable and offer another saved available item from the same category if one exists.",
+      "Never ignore saved availability states in the structured menu.",
       "If the caller asks about menu categories like soups or salads and exact items are not stored, mention only the saved category or price range and say the exact item list is not loaded yet.",
       "For restaurant or bakery calls, treat the conversation as an order request unless the exact item list, quantities, fulfillment method, and contact details are explicitly confirmed by the caller.",
       "Do not claim that an order is fully confirmed unless those details are clearly collected.",

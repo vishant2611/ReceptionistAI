@@ -32,7 +32,14 @@ type BusinessData = {
       description?: string;
       price?: string;
       available?: boolean;
+      availabilityMode?: "AVAILABLE" | "DISABLED_TODAY" | "DISABLED_UNTIL";
+      disabledUntil?: string;
     }>;
+    menuSource?: {
+      filename?: string;
+      mimeType?: string;
+      importedAt?: string;
+    } | null;
   };
 };
 

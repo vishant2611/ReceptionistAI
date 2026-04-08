@@ -3,6 +3,7 @@ import { businessMemberCreateSchema } from "./business-members.schemas";
 import { BusinessesService } from "./businesses.service";
 import {
   businessAiSettingsSchema,
+  businessMenuImportSchema,
   businessMenuUpdateSchema,
   businessOnboardingSchema,
   businessProfileUpdateSchema,
@@ -28,6 +29,12 @@ export class BusinessesController {
   async updateMenu(@Param("businessId") businessId: string, @Body() body: unknown) {
     const input = businessMenuUpdateSchema.parse(body);
     return this.businessesService.updateMenu(businessId, input);
+  }
+
+  @Patch(":businessId/menu/import")
+  async importMenu(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = businessMenuImportSchema.parse(body);
+    return this.businessesService.importMenu(businessId, input);
   }
 
   @Get(":businessId/members")

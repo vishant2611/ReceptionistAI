@@ -67,10 +67,27 @@ export const businessMenuItemSchema = z.object({
   description: z.string().optional().default(""),
   price: z.string().optional().default(""),
   available: z.boolean().default(true),
+  availabilityMode: z.enum(["AVAILABLE", "DISABLED_TODAY", "DISABLED_UNTIL"]).default("AVAILABLE"),
+  disabledUntil: z.string().optional().default(""),
 });
 
 export const businessMenuUpdateSchema = z.object({
   items: z.array(businessMenuItemSchema).default([]),
+  source: z
+    .object({
+      filename: z.string().optional().default(""),
+      mimeType: z.string().optional().default(""),
+      importedAt: z.string().optional().default(""),
+    })
+    .optional(),
 });
 
 export type BusinessMenuUpdateInput = z.infer<typeof businessMenuUpdateSchema>;
+
+export const businessMenuImportSchema = z.object({
+  filename: z.string().min(3),
+  mimeType: z.string().min(3),
+  contentBase64: z.string().min(20),
+});
+
+export type BusinessMenuImportInput = z.infer<typeof businessMenuImportSchema>;

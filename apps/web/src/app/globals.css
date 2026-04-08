@@ -1020,6 +1020,25 @@ img {
   background: linear-gradient(180deg, rgba(238, 242, 255, 0.72), rgba(255, 255, 255, 0.82));
 }
 
+.file-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.menu-source-note {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .menu-editor-list,
 .menu-snapshot-list {
   display: grid;
@@ -1044,6 +1063,11 @@ img {
 
 .menu-snapshot-item p + p {
   margin-top: 8px;
+}
+
+.menu-availability-copy {
+  font-weight: 700;
+  color: var(--brand-strong);
 }
 
 .call-recording-block {
