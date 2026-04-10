@@ -384,6 +384,10 @@ function extractMenuCatalog(rules: Record<string, unknown>) {
     .join("; ");
 }
 
+function buildOpeningGreeting(greeting: string, consentMessage: string, emergencyPrompt: string) {
+  return [greeting.trim(), consentMessage.trim(), emergencyPrompt.trim()].filter(Boolean).join(" ");
+}
+
 function collectTranscriptText(value: unknown): string[] {
   if (typeof value === "string") {
     return [value];
@@ -523,8 +527,11 @@ export class TelephonyService {
       "Never name a specific menu item, dish, soup, salad, dessert, or drink unless that exact item is present in the saved business summary, services summary, or pricing data.",
       "If structured menu items are present, prefer those exact items over broad summary text.",
       "Treat menu availability as a hard rule.",
+      "If a structured menu item is marked available now, you may treat it as currently available.",
       "If a structured menu item is marked unavailable today, do not offer it as available.",
       "If a structured menu item is marked unavailable until a specific time, do not offer it before that time.",
+      "When a caller asks about a specific saved menu item, check that item's current availability state before answering.",
+      "Do not reuse a previous availability answer from an earlier call if the current saved menu state is different.",
       "If a caller asks for an unavailable item, explain that it is currently unavailable and offer another saved available item from the same category if one exists.",
       "Never ignore saved availability states in the structured menu.",
       "If the caller asks about menu categories like soups or salads and exact items are not stored, mention only the saved category or price range and say the exact item list is not loaded yet.",
@@ -984,17 +991,16 @@ export class TelephonyService {
 
       introSent = true;
       responseInFlight = true;
+      const openingGreeting = buildOpeningGreeting(activeGreeting, activeConsentMessage, activeEmergencyPrompt);
       openAiSocket.send(
         JSON.stringify({
           type: "response.create",
           response: {
             output_modalities: ["audio"],
             instructions: [
-              activeGreeting,
-              activeConsentMessage,
-              activeEmergencyPrompt,
+              `Say this opening message clearly and naturally as your first spoken response: ${openingGreeting}`,
               "Start speaking now with a smooth professional receptionist greeting.",
-              "End with: How can I help you today?",
+              "Do not skip the recording consent line if one is provided.",
               "Do not wait for the caller before saying this opening greeting.",
             ]
               .filter(Boolean)

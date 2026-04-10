@@ -561,10 +561,16 @@ export class BusinessesService {
     const nextTelephonySettings = {
       provider: input.provider,
       connectionMode: input.connectionMode,
+      businessNumber: input.businessNumber.trim(),
       twilioNumber: input.twilioNumber.trim(),
       fallbackNumber: input.fallbackNumber.trim(),
+      aiReceptionistEnabled: input.aiReceptionistEnabled,
+      routingMode: input.routingMode,
+      aiTakeoverDelaySeconds: input.aiTakeoverDelaySeconds,
+      afterHoursRouting: input.afterHoursRouting,
       handoffEnabled: input.handoffEnabled,
       voicemailFallbackEnabled: input.voicemailFallbackEnabled,
+      recordingEnabled: input.recordingEnabled,
       consentMessage: input.consentMessage.trim(),
       postCallSmsEnabled: input.postCallSmsEnabled,
       preparedAt: new Date().toISOString(),
@@ -573,8 +579,19 @@ export class BusinessesService {
     const business = await this.prisma.business.update({
       where: { id: businessId },
       data: {
+        aiEnabled: input.aiReceptionistEnabled,
         answeringRules: {
           ...previousRules,
+          callHandlingMode: input.routingMode === "STAFF_ONLY" ? "STAFF_FIRST" : "LIVE_AI",
+          primaryMode:
+            input.routingMode === "AI_IMMEDIATELY"
+              ? "ALL_CALLS"
+              : input.afterHoursRouting === "AI"
+                ? "AFTER_MISSED_RINGS"
+                : "BUSINESS_HOURS",
+          ringCount: Math.max(1, Math.round(input.aiTakeoverDelaySeconds / 5) || 1),
+          afterHoursEnabled: input.afterHoursRouting === "AI" || input.afterHoursRouting === "MISSED_CALL_CAPTURE",
+          recordCalls: input.recordingEnabled,
           telephony: nextTelephonySettings,
         },
       },

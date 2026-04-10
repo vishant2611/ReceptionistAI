@@ -1039,10 +1039,81 @@ img {
   font-size: 0.92rem;
 }
 
+.menu-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.menu-stat-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(247, 248, 252, 0.78));
+  box-shadow: var(--shadow-card);
+}
+
+.menu-stat-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.menu-stat-card strong {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--font-heading);
+  font-size: 1.7rem;
+  letter-spacing: -0.04em;
+}
+
+.menu-filter-grid {
+  align-items: end;
+}
+
 .menu-editor-list,
 .menu-snapshot-list {
   display: grid;
   gap: 16px;
+}
+
+.menu-category-section {
+  display: grid;
+  gap: 14px;
+}
+
+.menu-category-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+}
+
+.menu-category-header.compact {
+  align-items: center;
+}
+
+.menu-category-header h3 {
+  margin: 10px 0 0;
+  font-size: 1.15rem;
+}
+
+.menu-category-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .menu-item-editor {
@@ -1063,6 +1134,42 @@ img {
 
 .menu-snapshot-item p + p {
   margin-top: 8px;
+}
+
+.menu-group-snapshot {
+  display: grid;
+  gap: 14px;
+}
+
+.menu-category-items {
+  display: grid;
+  gap: 12px;
+}
+
+.menu-snapshot-item {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.menu-snapshot-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.menu-snapshot-topline strong {
+  font-family: var(--font-heading);
+  font-size: 0.98rem;
+}
+
+.menu-snapshot-topline span {
+  color: var(--brand-strong);
+  font-family: var(--font-heading);
+  font-weight: 700;
 }
 
 .menu-availability-copy {
@@ -1268,6 +1375,10 @@ img {
     grid-template-columns: 1fr;
   }
 
+  .menu-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .call-log-head {
     display: none;
   }
@@ -1319,5 +1430,9 @@ img {
 
   .display-title {
     font-size: clamp(2rem, 11vw, 3rem);
+  }
+
+  .menu-stat-grid {
+    grid-template-columns: 1fr;
   }
 }

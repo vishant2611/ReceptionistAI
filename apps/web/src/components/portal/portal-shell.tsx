@@ -24,7 +24,7 @@ export function PortalShell({ active, title, subtitle, portal, children }: Porta
       label: "Menu",
       icon: "M",
       href: `/portal/menu?businessId=${businessId}`,
-      visible: portal.canEditConfiguration,
+      visible: portal.canManageMenu,
     },
     {
       key: "settings",

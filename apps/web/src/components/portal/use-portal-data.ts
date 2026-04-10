@@ -56,6 +56,19 @@ type MembersResponse = {
   }>;
 };
 
+const FOOD_BUSINESS_CATEGORIES = new Set([
+  "RESTAURANT",
+  "BAKERY",
+  "CAFE",
+  "CATERING",
+  "DESSERT_SHOP",
+  "FOOD_TRUCK",
+]);
+
+export function isFoodBusinessCategory(category?: string | null) {
+  return FOOD_BUSINESS_CATEGORIES.has(String(category ?? "").trim().toUpperCase());
+}
+
 export type PortalData = {
   session: AuthSession | null;
   business: BusinessData["business"] | null;
@@ -68,6 +81,7 @@ export type PortalData = {
   canViewCallLogs: boolean;
   canManageTelephony: boolean;
   canEditConfiguration: boolean;
+  canManageMenu: boolean;
   refreshBusiness: () => Promise<void>;
   refreshMembers: () => Promise<void>;
 };
@@ -135,6 +149,7 @@ export function usePortalData(businessId = ""): PortalData {
       canViewCallLogs: activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER" || activeRole === "STAFF",
       canManageTelephony: activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER",
       canEditConfiguration: activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER",
+      canManageMenu: (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER") && isFoodBusinessCategory(business?.category),
       refreshBusiness,
       refreshMembers,
     }),

@@ -102,14 +102,14 @@ export function PortalSettingsPage({ businessId = "" }: Props) {
     <PortalShell
       active="settings"
       portal={portal}
-      subtitle="Define when AI answers, how it greets callers, which voice it uses, and what happens after hours."
+      subtitle="Control the AI receptionist's voice, greeting, conversation style, and how it behaves once a call reaches the assistant."
       title="AI Settings"
     >
       <section className="grid-2">
         <form className="surface-card stack-md" onSubmit={onSubmit}>
           <div className="page-intro">
-            <span className="eyebrow">Controls</span>
-            <h2 className="section-title" style={{ marginTop: 14 }}>Live AI configuration</h2>
+            <span className="eyebrow">Behavior</span>
+            <h2 className="section-title" style={{ marginTop: 14 }}>How the AI should sound and respond</h2>
           </div>
 
           <div className="field-toggle">

@@ -38,10 +38,16 @@ export type BusinessAiSettingsInput = z.infer<typeof businessAiSettingsSchema>;
 export const businessTelephonySettingsSchema = z.object({
   provider: z.enum(["TWILIO"]).default("TWILIO"),
   connectionMode: z.enum(["DIRECT_TO_AI", "AI_AFTER_MISSED_RINGS", "BUSINESS_HOURS_ONLY"]).default("DIRECT_TO_AI"),
+  businessNumber: z.string().max(40).optional().default(""),
   twilioNumber: z.string().min(7).max(40),
   fallbackNumber: z.string().max(40).optional().default(""),
+  aiReceptionistEnabled: z.boolean().default(true),
+  routingMode: z.enum(["AI_IMMEDIATELY", "STAFF_FIRST_THEN_AI", "STAFF_ONLY"]).default("AI_IMMEDIATELY"),
+  aiTakeoverDelaySeconds: z.coerce.number().int().min(0).max(120).default(15),
+  afterHoursRouting: z.enum(["AI", "VOICEMAIL", "MISSED_CALL_CAPTURE"]).default("AI"),
   handoffEnabled: z.boolean().default(true),
   voicemailFallbackEnabled: z.boolean().default(true),
+  recordingEnabled: z.boolean().default(true),
   consentMessage: z.string().min(6).max(500),
   postCallSmsEnabled: z.boolean().default(false),
 });
