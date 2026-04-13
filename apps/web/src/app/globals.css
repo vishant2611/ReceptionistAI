@@ -172,6 +172,10 @@ img {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.onboarding-grid {
+  align-items: start;
+}
+
 .feature-card h3,
 .surface-card h3 {
   margin: 0 0 10px;
@@ -1153,6 +1157,54 @@ img {
   background: rgba(255, 255, 255, 0.78);
 }
 
+.workflow-list {
+  display: grid;
+  gap: 16px;
+}
+
+.workflow-card {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(247, 248, 252, 0.78));
+  box-shadow: var(--shadow-card);
+}
+
+.workflow-grid {
+  align-items: start;
+}
+
+.workflow-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workflow-stat-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(247, 248, 252, 0.78));
+  box-shadow: var(--shadow-card);
+}
+
+.workflow-stat-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.workflow-stat-card strong {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  letter-spacing: -0.04em;
+}
+
 .menu-snapshot-topline {
   display: flex;
   justify-content: space-between;
@@ -1377,6 +1429,10 @@ img {
 
   .menu-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-stats {
+    grid-template-columns: 1fr;
   }
 
   .call-log-head {

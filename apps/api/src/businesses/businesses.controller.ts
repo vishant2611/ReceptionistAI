@@ -8,6 +8,8 @@ import {
   businessOnboardingSchema,
   businessProfileUpdateSchema,
   businessTelephonySettingsSchema,
+  pharmacyCallbackRequestsUpdateSchema,
+  pharmacyRefillRequestsUpdateSchema,
 } from "./businesses.schemas";
 
 @Controller("businesses")
@@ -69,5 +71,27 @@ export class BusinessesController {
   async updateTelephonySettings(@Param("businessId") businessId: string, @Body() body: unknown) {
     const input = businessTelephonySettingsSchema.parse(body);
     return this.businessesService.updateTelephonySettings(businessId, input);
+  }
+
+  @Get(":businessId/pharmacy/refill-requests")
+  async listPharmacyRefillRequests(@Param("businessId") businessId: string) {
+    return this.businessesService.listPharmacyRefillRequests(businessId);
+  }
+
+  @Patch(":businessId/pharmacy/refill-requests")
+  async updatePharmacyRefillRequests(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = pharmacyRefillRequestsUpdateSchema.parse(body);
+    return this.businessesService.updatePharmacyRefillRequests(businessId, input);
+  }
+
+  @Get(":businessId/pharmacy/callback-requests")
+  async listPharmacyCallbackRequests(@Param("businessId") businessId: string) {
+    return this.businessesService.listPharmacyCallbackRequests(businessId);
+  }
+
+  @Patch(":businessId/pharmacy/callback-requests")
+  async updatePharmacyCallbackRequests(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = pharmacyCallbackRequestsUpdateSchema.parse(body);
+    return this.businessesService.updatePharmacyCallbackRequests(businessId, input);
   }
 }

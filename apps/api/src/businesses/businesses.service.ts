@@ -10,6 +10,8 @@ import {
   BusinessOnboardingInput,
   BusinessProfileUpdateInput,
   BusinessTelephonySettingsInput,
+  PharmacyCallbackRequestsUpdateInput,
+  PharmacyRefillRequestsUpdateInput,
 } from "./businesses.schemas";
 
 const medicalCategories = new Set<BusinessCategory>([
@@ -100,6 +102,154 @@ function extractMenuSource(value: unknown) {
   };
 }
 
+function extractPharmacyRefillRequests(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const rules = value as Record<string, unknown>;
+  const pharmacy = rules.pharmacy;
+
+  if (!pharmacy || typeof pharmacy !== "object" || Array.isArray(pharmacy)) {
+    return [];
+  }
+
+  const requests = (pharmacy as Record<string, unknown>).refillRequests;
+
+  if (!Array.isArray(requests)) {
+    return [];
+  }
+
+  return requests
+    .filter((request) => request && typeof request === "object" && !Array.isArray(request))
+    .map((request) => {
+      const record = request as Record<string, unknown>;
+
+      return {
+        id: String(record.id ?? "").trim(),
+        patientName: String(record.patientName ?? "").trim(),
+        phoneNumber: String(record.phoneNumber ?? "").trim(),
+        medicationName: String(record.medicationName ?? "").trim(),
+        prescriptionNumber: String(record.prescriptionNumber ?? "").trim(),
+        requestedOn: String(record.requestedOn ?? "").trim(),
+        preferredPickupTime: String(record.preferredPickupTime ?? "").trim(),
+        notes: String(record.notes ?? "").trim(),
+        assignedTo: String(record.assignedTo ?? "").trim(),
+        status: String(record.status ?? "NEW").trim() || "NEW",
+      };
+    })
+    .filter((request) => request.id && request.patientName && request.phoneNumber && request.medicationName);
+}
+
+function extractPharmacyCallbackRequests(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const rules = value as Record<string, unknown>;
+  const pharmacy = rules.pharmacy;
+
+  if (!pharmacy || typeof pharmacy !== "object" || Array.isArray(pharmacy)) {
+    return [];
+  }
+
+  const requests = (pharmacy as Record<string, unknown>).callbackRequests;
+
+  if (!Array.isArray(requests)) {
+    return [];
+  }
+
+  return requests
+    .filter((request) => request && typeof request === "object" && !Array.isArray(request))
+    .map((request) => {
+      const record = request as Record<string, unknown>;
+
+      return {
+        id: String(record.id ?? "").trim(),
+        patientName: String(record.patientName ?? "").trim(),
+        phoneNumber: String(record.phoneNumber ?? "").trim(),
+        reason: String(record.reason ?? "").trim(),
+        notes: String(record.notes ?? "").trim(),
+        requestedOn: String(record.requestedOn ?? "").trim(),
+        priority: String(record.priority ?? "NORMAL").trim() || "NORMAL",
+        assignedTo: String(record.assignedTo ?? "").trim(),
+        lastAttemptAt: String(record.lastAttemptAt ?? "").trim(),
+        status: String(record.status ?? "NEW").trim() || "NEW",
+      };
+    })
+    .filter((request) => request.id && request.patientName && request.phoneNumber && request.reason);
+}
+
+function normalizePhoneNumber(value: string | null | undefined) {
+  return String(value ?? "").trim();
+}
+
+function derivePharmacyRefillRequestFromCall(call: {
+  id: string;
+  callerName: string | null;
+  callerNumber: string | null;
+  summary: string | null;
+  transcript: string | null;
+  startedAt: Date;
+}) {
+  const source = `${call.summary || ""}\n${call.transcript || ""}`.trim();
+
+  if (!/(refill|prescription|pickup|medication|medicine)/i.test(source)) {
+    return null;
+  }
+
+  const medicationMatch =
+    source.match(/(?:refill(?: request)? for|medication(?: name)? is|medicine(?: name)? is|prescription(?: for)?)[\s:]+([A-Za-z0-9][A-Za-z0-9\s/-]{1,80})/i) ||
+    source.match(/Caller:\s.*?(?:for|about)\s+([A-Za-z0-9][A-Za-z0-9\s/-]{1,80})(?:\.|,|\n)/i);
+  const pickupMatch = source.match(/(?:pickup|pick up)[\s:]+([A-Za-z0-9 :,.-]{2,80})/i);
+  const requestDate = call.startedAt.toISOString().slice(0, 10);
+
+  return {
+    id: `call-${call.id}`,
+    patientName: call.callerName?.trim() || "Unknown patient",
+    phoneNumber: normalizePhoneNumber(call.callerNumber),
+    medicationName: medicationMatch?.[1]?.trim() || "Medication request captured by AI",
+    prescriptionNumber: "",
+    requestedOn: requestDate,
+    preferredPickupTime: pickupMatch?.[1]?.trim() || "",
+    notes: source.slice(0, 280),
+    assignedTo: "",
+    status: /(ready for pickup|ready to pick up)/i.test(source) ? "READY_FOR_PICKUP" : "NEW",
+  };
+}
+
+function derivePharmacyCallbackRequestFromCall(call: {
+  id: string;
+  callerName: string | null;
+  callerNumber: string | null;
+  summary: string | null;
+  transcript: string | null;
+  startedAt: Date;
+}) {
+  const source = `${call.summary || ""}\n${call.transcript || ""}`.trim();
+
+  if (!/(callback|call back|speak with pharmacist|pharmacist call)/i.test(source)) {
+    return null;
+  }
+
+  const reasonMatch =
+    source.match(/(?:callback(?: request)?|call back(?: request)?|reason(?: for callback)?)[\s:]+([A-Za-z0-9][A-Za-z0-9\s,.'/-]{3,120})/i) ||
+    source.match(/Caller:\s(.{8,180})/i);
+
+  return {
+    id: `call-${call.id}`,
+    patientName: call.callerName?.trim() || "Unknown patient",
+    phoneNumber: normalizePhoneNumber(call.callerNumber),
+    reason: reasonMatch?.[1]?.trim() || "Patient requested a pharmacist callback.",
+    notes: source.slice(0, 280),
+    requestedOn: call.startedAt.toISOString().slice(0, 10),
+    priority: /(urgent|as soon as possible|right away)/i.test(source) ? "URGENT" : "NORMAL",
+    assignedTo: "",
+    lastAttemptAt: "",
+    status: "NEW",
+  };
+}
+
 function extractJsonObject(value: string) {
   const trimmed = value.trim();
 
@@ -175,6 +325,12 @@ function extractResponseText(value: unknown): string {
 @Injectable()
 export class BusinessesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private assertPharmacyBusiness(category: BusinessCategory) {
+    if (category !== BusinessCategory.PHARMACY) {
+      throw new BadRequestException("This pharmacy workflow is only available for pharmacy businesses.");
+    }
+  }
 
   private async ensureDemoCalls(businessId: string, businessName: string, businessCategory: BusinessCategory) {
     const count = await this.prisma.call.count({
@@ -266,6 +422,8 @@ export class BusinessesService {
         telephonySettings: readBusinessRules(business.answeringRules).telephony ?? null,
         menuItems: extractMenuItems(business.answeringRules),
         menuSource: extractMenuSource(business.answeringRules),
+        pharmacyRefillRequests: extractPharmacyRefillRequests(business.answeringRules),
+        pharmacyCallbackRequests: extractPharmacyCallbackRequests(business.answeringRules),
       },
     };
   }
@@ -603,6 +761,182 @@ export class BusinessesService {
         id: business.id,
         telephonySettings: readBusinessRules(business.answeringRules).telephony ?? null,
       },
+    };
+  }
+
+  async listPharmacyRefillRequests(businessId: string) {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    this.assertPharmacyBusiness(business.category);
+
+    const savedRequests = extractPharmacyRefillRequests(business.answeringRules);
+    const calls = await this.prisma.call.findMany({
+      where: { businessId },
+      orderBy: {
+        startedAt: "desc",
+      },
+    });
+
+    const derivedRequests = calls
+      .map((call) => derivePharmacyRefillRequestFromCall(call))
+      .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyRefillRequestFromCall>> => Boolean(request));
+
+    const mergedRequests = new Map<string, (typeof savedRequests)[number]>();
+
+    for (const request of derivedRequests) {
+      mergedRequests.set(request.id, request);
+    }
+
+    for (const request of savedRequests) {
+      mergedRequests.set(request.id, request);
+    }
+
+    return {
+      requests: Array.from(mergedRequests.values()),
+    };
+  }
+
+  async updatePharmacyRefillRequests(businessId: string, input: PharmacyRefillRequestsUpdateInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    this.assertPharmacyBusiness(existing.category);
+
+    const previousRules = readBusinessRules(existing.answeringRules);
+    const previousPharmacy =
+      previousRules.pharmacy && typeof previousRules.pharmacy === "object" && !Array.isArray(previousRules.pharmacy)
+        ? (previousRules.pharmacy as Record<string, unknown>)
+        : {};
+
+    const requests = input.requests.map((request) => ({
+      id: request.id.trim(),
+      patientName: request.patientName.trim(),
+      phoneNumber: request.phoneNumber.trim(),
+      medicationName: request.medicationName.trim(),
+      prescriptionNumber: request.prescriptionNumber.trim(),
+      requestedOn: request.requestedOn.trim(),
+      preferredPickupTime: request.preferredPickupTime.trim(),
+      notes: request.notes.trim(),
+      assignedTo: request.assignedTo.trim(),
+      status: request.status,
+    }));
+
+    const business = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        answeringRules: {
+          ...previousRules,
+          pharmacy: {
+            ...previousPharmacy,
+            refillRequests: requests,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    return {
+      message: "Refill requests updated successfully.",
+      requests: extractPharmacyRefillRequests(business.answeringRules),
+    };
+  }
+
+  async listPharmacyCallbackRequests(businessId: string) {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    this.assertPharmacyBusiness(business.category);
+
+    const savedRequests = extractPharmacyCallbackRequests(business.answeringRules);
+    const calls = await this.prisma.call.findMany({
+      where: { businessId },
+      orderBy: {
+        startedAt: "desc",
+      },
+    });
+
+    const derivedRequests = calls
+      .map((call) => derivePharmacyCallbackRequestFromCall(call))
+      .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyCallbackRequestFromCall>> => Boolean(request));
+
+    const mergedRequests = new Map<string, (typeof savedRequests)[number]>();
+
+    for (const request of derivedRequests) {
+      mergedRequests.set(request.id, request);
+    }
+
+    for (const request of savedRequests) {
+      mergedRequests.set(request.id, request);
+    }
+
+    return {
+      requests: Array.from(mergedRequests.values()),
+    };
+  }
+
+  async updatePharmacyCallbackRequests(businessId: string, input: PharmacyCallbackRequestsUpdateInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    this.assertPharmacyBusiness(existing.category);
+
+    const previousRules = readBusinessRules(existing.answeringRules);
+    const previousPharmacy =
+      previousRules.pharmacy && typeof previousRules.pharmacy === "object" && !Array.isArray(previousRules.pharmacy)
+        ? (previousRules.pharmacy as Record<string, unknown>)
+        : {};
+
+    const requests = input.requests.map((request) => ({
+      id: request.id.trim(),
+      patientName: request.patientName.trim(),
+      phoneNumber: request.phoneNumber.trim(),
+      reason: request.reason.trim(),
+      notes: request.notes.trim(),
+      requestedOn: request.requestedOn.trim(),
+      priority: request.priority,
+      assignedTo: request.assignedTo.trim(),
+      lastAttemptAt: request.lastAttemptAt.trim(),
+      status: request.status,
+    }));
+
+    const business = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        answeringRules: {
+          ...previousRules,
+          pharmacy: {
+            ...previousPharmacy,
+            callbackRequests: requests,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    return {
+      message: "Callback requests updated successfully.",
+      requests: extractPharmacyCallbackRequests(business.answeringRules),
     };
   }
 

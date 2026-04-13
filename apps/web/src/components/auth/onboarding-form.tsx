@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../lib/api";
+import { getSession } from "../../lib/session";
 
 type OnboardingResponse = {
   message: string;
@@ -12,10 +13,24 @@ type OnboardingResponse = {
   };
 };
 
-const officeHourDefaults = [
-  "Mon-Fri: 9:00 AM - 6:00 PM",
-  "Saturday: 10:00 AM - 3:00 PM",
-];
+type BusinessResponse = {
+  business: {
+    id: string;
+    name: string;
+    category: string;
+    phoneNumber?: string | null;
+    address?: string | null;
+    description?: string | null;
+    servicesSummary?: string | null;
+    priceListSummary?: string | null;
+    officeHours?: unknown;
+    greetingMessage?: string | null;
+    voicePreference?: string | null;
+    selectedPlan?: string | null;
+    billingCycle?: string | null;
+    timezone: string;
+  };
+};
 
 type OnboardingFormProps = {
   businessId?: string;
@@ -25,21 +40,106 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [initialValues, setInitialValues] = useState({
+    businessName: "",
+    industryType: "",
+    phone: "",
+    timezone: "America/Toronto",
+    address: "",
+    businessSummary: "",
+    servicesSummary: "",
+    priceListSummary: "",
+    officeHours: "",
+    answeringRule: "Answer all calls",
+    greetingMessage: "",
+    voicePreference: "Professional female",
+    selectedPlan: "Free Trial",
+    billingCycle: "Monthly",
+  });
+
+  const activeBusinessId = businessId || getSession()?.business.id || "";
+
+  useEffect(() => {
+    if (!activeBusinessId) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    apiRequest<BusinessResponse>(`/api/businesses/${activeBusinessId}`)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        const business = response.business;
+        const officeHours = Array.isArray(business.officeHours)
+          ? business.officeHours.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          : [];
+
+        setInitialValues({
+          businessName: business.name || "",
+          industryType: business.category ? business.category.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase()) : "",
+          phone: business.phoneNumber || "",
+          timezone: business.timezone || "America/Toronto",
+          address: business.address || "",
+          businessSummary: business.description || "",
+          servicesSummary: business.servicesSummary || "",
+          priceListSummary: business.priceListSummary || "",
+          officeHours: officeHours.join("\n"),
+          answeringRule: "Answer all calls",
+          greetingMessage: business.greetingMessage || "",
+          voicePreference: business.voicePreference || "Professional female",
+          selectedPlan: business.selectedPlan || "Free Trial",
+          billingCycle: business.billingCycle || "Monthly",
+        });
+      })
+      .catch((requestError) => {
+        if (cancelled) {
+          return;
+        }
+
+        setError(requestError instanceof Error ? requestError.message : "Unable to load onboarding details.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBusinessId]);
 
   const guidance = useMemo(() => {
-    if (!businessId) {
+    if (!activeBusinessId) {
       return "Create the company account first so we know which business record to update during onboarding.";
     }
 
-    return `Updating business record: ${businessId}`;
-  }, [businessId]);
+    return `Updating business record: ${activeBusinessId}`;
+  }, [activeBusinessId]);
+
+  const formKey = useMemo(
+    () =>
+      [
+        activeBusinessId,
+        initialValues.businessName,
+        initialValues.industryType,
+        initialValues.phone,
+        initialValues.address,
+      ].join(":"),
+    [activeBusinessId, initialValues.address, initialValues.businessName, initialValues.industryType, initialValues.phone],
+  );
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setSuccess("");
 
-    if (!businessId) {
+    if (!activeBusinessId) {
       setError("Missing business ID. Please create the account first from the signup page.");
       return;
     }
@@ -67,7 +167,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
     };
 
     try {
-      const response = await apiRequest<OnboardingResponse>(`/api/businesses/${businessId}/onboarding`, {
+      const response = await apiRequest<OnboardingResponse>(`/api/businesses/${activeBusinessId}/onboarding`, {
         method: "PATCH",
         body: payload,
       });
@@ -86,20 +186,24 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
     <div className="stack-md">
       <div className="status-banner neutral">{guidance}</div>
 
-      <form className="form-grid two-col" onSubmit={onSubmit}>
+      {loading ? <div className="status-banner neutral">Loading saved business details...</div> : null}
+
+      {loading ? null : (
+      <form key={formKey} className="form-grid two-col" onSubmit={onSubmit}>
         <div className="field">
           <label htmlFor="onboard-business-name">Business name</label>
-          <input id="onboard-business-name" name="businessName" placeholder="Receptionist AI Dental" type="text" />
+          <input defaultValue={initialValues.businessName} id="onboard-business-name" name="businessName" placeholder="Healthcare Pharmacy" type="text" />
         </div>
         <div className="field">
           <label htmlFor="onboard-industry">Industry type</label>
-          <select defaultValue="" id="onboard-industry" name="industryType">
+          <select defaultValue={initialValues.industryType} id="onboard-industry" name="industryType">
             <option disabled value="">
               Select industry
             </option>
             <option>Clinic</option>
             <option>Doctor</option>
             <option>Dental</option>
+            <option>Pharmacy</option>
             <option>Restaurant</option>
             <option>Cafe</option>
             <option>Salon</option>
@@ -111,11 +215,11 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         </div>
         <div className="field">
           <label htmlFor="onboard-phone">Contact number</label>
-          <input id="onboard-phone" name="phone" placeholder="+1 (555) 222-7788" type="tel" />
+          <input defaultValue={initialValues.phone} id="onboard-phone" name="phone" placeholder="+1 (555) 222-7788" type="tel" />
         </div>
         <div className="field">
           <label htmlFor="onboard-timezone">Timezone</label>
-          <select defaultValue="America/Toronto" id="onboard-timezone" name="timezone">
+          <select defaultValue={initialValues.timezone} id="onboard-timezone" name="timezone">
             <option>America/Toronto</option>
             <option>America/New_York</option>
             <option>America/Chicago</option>
@@ -124,11 +228,12 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="onboard-address">Address</label>
-          <input id="onboard-address" name="address" placeholder="456 Premium Avenue, Toronto, ON" type="text" />
+          <input defaultValue={initialValues.address} id="onboard-address" name="address" placeholder="456 Premium Avenue, Toronto, ON" type="text" />
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="onboard-summary">Business summary</label>
           <textarea
+            defaultValue={initialValues.businessSummary}
             id="onboard-summary"
             name="businessSummary"
             placeholder="Describe the services, products, and what the AI should know when speaking to callers."
@@ -137,26 +242,28 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="onboard-services">Services summary</label>
           <textarea
+            defaultValue={initialValues.servicesSummary}
             id="onboard-services"
             name="servicesSummary"
-            placeholder="Haircuts, color treatments, consultations, callback requests, order handling, and FAQs."
+            placeholder="Prescription refill requests, pharmacist callback requests, pickup questions, store hours, and general pharmacy support."
           />
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="onboard-pricing">Price or fee summary</label>
           <textarea
+            defaultValue={initialValues.priceListSummary}
             id="onboard-pricing"
             name="priceListSummary"
-            placeholder="Consultation: $50. Haircut: $35. Emergency visit: call clinic directly."
+            placeholder="List any consultation fees, delivery fees, blister pack fees, or other pharmacy service charges if applicable."
           />
         </div>
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="onboard-hours">Office hours</label>
-          <textarea defaultValue={officeHourDefaults.join("\n")} id="onboard-hours" name="officeHours" />
+          <textarea defaultValue={initialValues.officeHours} id="onboard-hours" name="officeHours" placeholder="Leave blank if you haven't added office hours yet." />
         </div>
         <div className="field">
           <label htmlFor="onboard-answer-rule">Primary answering rule</label>
-          <select defaultValue="Answer all calls" id="onboard-answer-rule" name="answeringRule">
+          <select defaultValue={initialValues.answeringRule} id="onboard-answer-rule" name="answeringRule">
             <option>Answer all calls</option>
             <option>Answer only after-hours</option>
             <option>Answer after 3 to 4 missed rings</option>
@@ -165,7 +272,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         </div>
         <div className="field">
           <label htmlFor="onboard-voice">Voice preference</label>
-          <select defaultValue="Professional female" id="onboard-voice" name="voicePreference">
+          <select defaultValue={initialValues.voicePreference} id="onboard-voice" name="voicePreference">
             <option>Professional female</option>
             <option>Warm female</option>
             <option>Professional male</option>
@@ -175,6 +282,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         <div className="field" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="onboard-greeting">Greeting message</label>
           <textarea
+            defaultValue={initialValues.greetingMessage}
             id="onboard-greeting"
             name="greetingMessage"
             placeholder="Thank you for calling Receptionist AI Clinic. How may I help you today?"
@@ -182,7 +290,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         </div>
         <div className="field">
           <label htmlFor="onboard-plan">Selected plan</label>
-          <select defaultValue="Free Trial" id="onboard-plan" name="selectedPlan">
+          <select defaultValue={initialValues.selectedPlan} id="onboard-plan" name="selectedPlan">
             <option>Free Trial</option>
             <option>Basic</option>
             <option>Silver</option>
@@ -192,7 +300,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
         </div>
         <div className="field">
           <label htmlFor="onboard-cycle">Billing cycle</label>
-          <select defaultValue="Monthly" id="onboard-cycle" name="billingCycle">
+          <select defaultValue={initialValues.billingCycle} id="onboard-cycle" name="billingCycle">
             <option>Monthly</option>
             <option>Quarterly</option>
             <option>Yearly</option>
@@ -206,6 +314,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
           {submitting ? "Saving onboarding..." : "Save onboarding details"}
         </button>
       </form>
+      )}
     </div>
   );
 }

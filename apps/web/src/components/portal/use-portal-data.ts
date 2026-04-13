@@ -40,6 +40,30 @@ type BusinessData = {
       mimeType?: string;
       importedAt?: string;
     } | null;
+    pharmacyRefillRequests?: Array<{
+      id: string;
+      patientName: string;
+      phoneNumber: string;
+      medicationName: string;
+      prescriptionNumber?: string;
+      requestedOn: string;
+      preferredPickupTime?: string;
+      notes?: string;
+      assignedTo?: string;
+      status: string;
+    }>;
+    pharmacyCallbackRequests?: Array<{
+      id: string;
+      patientName: string;
+      phoneNumber: string;
+      reason: string;
+      notes?: string;
+      requestedOn: string;
+      priority: string;
+      assignedTo?: string;
+      lastAttemptAt?: string;
+      status: string;
+    }>;
   };
 };
 
@@ -65,8 +89,14 @@ const FOOD_BUSINESS_CATEGORIES = new Set([
   "FOOD_TRUCK",
 ]);
 
+const PHARMACY_BUSINESS_CATEGORIES = new Set(["PHARMACY"]);
+
 export function isFoodBusinessCategory(category?: string | null) {
   return FOOD_BUSINESS_CATEGORIES.has(String(category ?? "").trim().toUpperCase());
+}
+
+export function isPharmacyBusinessCategory(category?: string | null) {
+  return PHARMACY_BUSINESS_CATEGORIES.has(String(category ?? "").trim().toUpperCase());
 }
 
 export type PortalData = {
@@ -82,6 +112,9 @@ export type PortalData = {
   canManageTelephony: boolean;
   canEditConfiguration: boolean;
   canManageMenu: boolean;
+  canViewPharmacyWorkflows: boolean;
+  canManagePharmacyWorkflows: boolean;
+  isPharmacyBusiness: boolean;
   refreshBusiness: () => Promise<void>;
   refreshMembers: () => Promise<void>;
 };
@@ -150,6 +183,12 @@ export function usePortalData(businessId = ""): PortalData {
       canManageTelephony: activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER",
       canEditConfiguration: activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER",
       canManageMenu: (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER") && isFoodBusinessCategory(business?.category),
+      canViewPharmacyWorkflows:
+        (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER" || activeRole === "STAFF") &&
+        isPharmacyBusinessCategory(business?.category),
+      canManagePharmacyWorkflows:
+        (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER") && isPharmacyBusinessCategory(business?.category),
+      isPharmacyBusiness: isPharmacyBusinessCategory(business?.category),
       refreshBusiness,
       refreshMembers,
     }),

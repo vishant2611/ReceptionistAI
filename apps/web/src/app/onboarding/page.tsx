@@ -54,7 +54,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
           </p>
         </div>
 
-        <section className="grid-2">
+        <section className="grid-2 onboarding-grid">
           <div className="surface-card stack-md">
             <div className="page-intro">
               <span className="eyebrow">Step map</span>

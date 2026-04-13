@@ -97,3 +97,43 @@ export const businessMenuImportSchema = z.object({
 });
 
 export type BusinessMenuImportInput = z.infer<typeof businessMenuImportSchema>;
+
+export const pharmacyRefillRequestSchema = z.object({
+  id: z.string().min(2),
+  patientName: z.string().min(2),
+  phoneNumber: z.string().min(7),
+  medicationName: z.string().min(2),
+  prescriptionNumber: z.string().optional().default(""),
+  requestedOn: z.string().min(4),
+  preferredPickupTime: z.string().optional().default(""),
+  notes: z.string().optional().default(""),
+  assignedTo: z.string().optional().default(""),
+  status: z
+    .enum(["NEW", "UNDER_REVIEW", "APPROVED", "READY_FOR_PICKUP", "COMPLETED", "REJECTED", "NEED_CALLBACK"])
+    .default("NEW"),
+});
+
+export const pharmacyRefillRequestsUpdateSchema = z.object({
+  requests: z.array(pharmacyRefillRequestSchema).default([]),
+});
+
+export type PharmacyRefillRequestsUpdateInput = z.infer<typeof pharmacyRefillRequestsUpdateSchema>;
+
+export const pharmacyCallbackRequestSchema = z.object({
+  id: z.string().min(2),
+  patientName: z.string().min(2),
+  phoneNumber: z.string().min(7),
+  reason: z.string().min(4),
+  notes: z.string().optional().default(""),
+  requestedOn: z.string().min(4),
+  priority: z.enum(["NORMAL", "URGENT"]).default("NORMAL"),
+  assignedTo: z.string().optional().default(""),
+  lastAttemptAt: z.string().optional().default(""),
+  status: z.enum(["NEW", "ASSIGNED", "PENDING_CALLBACK", "CALLED", "COMPLETED", "UNABLE_TO_REACH"]).default("NEW"),
+});
+
+export const pharmacyCallbackRequestsUpdateSchema = z.object({
+  requests: z.array(pharmacyCallbackRequestSchema).default([]),
+});
+
+export type PharmacyCallbackRequestsUpdateInput = z.infer<typeof pharmacyCallbackRequestsUpdateSchema>;

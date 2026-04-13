@@ -28,11 +28,6 @@ type TwilioSpeechPayload = {
   Confidence?: string;
 };
 
-type LiveRecordingContext = {
-  callbackUrl?: string;
-  started: boolean;
-};
-
 function escapeXml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -54,18 +49,49 @@ function inferBaseUrl(headers: Record<string, string | string[] | undefined>) {
   return `${proto || "http"}://${host}`;
 }
 
-function encodeFormBody(values: Record<string, string>) {
-  const params = new URLSearchParams();
+function getTwilioPlaybackUrls(recordingUrl: string) {
+  const trimmed = recordingUrl.trim();
 
-  for (const [key, value] of Object.entries(values)) {
-    params.set(key, value);
+  if (!trimmed) {
+    return [];
   }
 
-  return params.toString();
+  if (/^https:\/\/api\.twilio\.com\/.+\/Recordings\/[^./?]+$/i.test(trimmed)) {
+    return [`${trimmed}.mp3`, `${trimmed}.wav`, trimmed];
+  }
+
+  return [trimmed];
 }
 
-function getTwilioPlaybackUrl(recordingUrl: string) {
-  return /^https:\/\/api\.twilio\.com\/.+\/Recordings\/[^./?]+$/i.test(recordingUrl) ? `${recordingUrl}.mp3` : recordingUrl;
+async function fetchTwilioRecordingWithRedirects(url: string, authHeader: string, redirectCount = 0): Promise<Response> {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${authHeader}`,
+    },
+    redirect: "manual",
+  });
+
+  if (![301, 302, 303, 307, 308].includes(response.status) || redirectCount >= 3) {
+    return response;
+  }
+
+  const location = response.headers.get("location");
+
+  if (!location) {
+    return response;
+  }
+
+  const nextUrl = new URL(location, url).toString();
+  const currentHost = new URL(url).host;
+  const nextHost = new URL(nextUrl).host;
+
+  if (currentHost !== nextHost) {
+    return fetch(nextUrl, {
+      redirect: "manual",
+    });
+  }
+
+  return fetchTwilioRecordingWithRedirects(nextUrl, authHeader, redirectCount + 1);
 }
 
 function normalizeText(value: string) {
@@ -385,7 +411,7 @@ function extractMenuCatalog(rules: Record<string, unknown>) {
 }
 
 function buildOpeningGreeting(greeting: string, consentMessage: string, emergencyPrompt: string) {
-  return [greeting.trim(), consentMessage.trim(), emergencyPrompt.trim()].filter(Boolean).join(" ");
+  return [consentMessage.trim(), greeting.trim(), emergencyPrompt.trim()].filter(Boolean).join(" ");
 }
 
 function collectTranscriptText(value: unknown): string[] {
@@ -660,10 +686,23 @@ export class TelephonyService {
       }
     }
 
-    return this.prisma.call.findFirst({
+    const byCaller = await this.prisma.call.findFirst({
       where: {
         businessId,
         callerNumber: payload.From?.trim() || undefined,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (byCaller) {
+      return byCaller;
+    }
+
+    return this.prisma.call.findFirst({
+      where: {
+        businessId,
       },
       orderBy: {
         createdAt: "desc",
@@ -715,12 +754,26 @@ export class TelephonyService {
       business.greetingMessage?.trim() || `Thank you for calling ${business.name}.`;
     const routingMode =
       typeof telephony.connectionMode === "string" ? telephony.connectionMode.replaceAll("_", " ").toLowerCase() : "direct to ai";
+    const fallbackNumber =
+      typeof telephony.fallbackNumber === "string" && telephony.fallbackNumber.trim().length > 0
+        ? telephony.fallbackNumber.trim()
+        : business.phoneNumber?.trim() || "";
     const consentMessage =
       typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
         ? telephony.consentMessage.trim()
         : "This call may be recorded and transcribed for service quality and follow-up.";
     const callHandlingMode =
       typeof rules.callHandlingMode === "string" ? rules.callHandlingMode : "LIVE_AI";
+    const routingPreference = typeof telephony.routingMode === "string" ? telephony.routingMode : "AI_IMMEDIATELY";
+    const aiReceptionistEnabled = telephony.aiReceptionistEnabled !== false && business.aiEnabled !== false;
+
+    if (!aiReceptionistEnabled || routingPreference === "STAFF_ONLY") {
+      if (fallbackNumber) {
+        return `<Response><Dial>${escapeXml(fallbackNumber)}</Dial></Response>`;
+      }
+
+      return `<Response><Say voice="alice">The AI receptionist is currently disabled. Please call back later.</Say><Hangup/></Response>`;
+    }
 
     if (callHandlingMode === "MESSAGE_CAPTURE") {
       const recordAction = `${baseUrl}/api/telephony/twilio/voice/${businessId}/recording-complete`;
@@ -741,8 +794,12 @@ export class TelephonyService {
       const wsBaseUrl = baseUrl.replace(/^http/i, "ws");
       const streamUrl = `${wsBaseUrl}/ws/twilio-media?businessId=${encodeURIComponent(businessId)}`;
       const recordingCallbackUrl = `${baseUrl}/api/telephony/twilio/voice/${businessId}/recording-complete`;
+      const recordingEnabled = telephony.recordingEnabled !== false;
+      const recordingStart = recordingEnabled
+        ? `<Start><Recording recordingStatusCallback="${escapeXml(recordingCallbackUrl)}" recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed" channels="dual" track="both" /></Start>`
+        : "";
 
-      return `<Response><Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /><Parameter name="recordingCallbackUrl" value="${escapeXml(recordingCallbackUrl)}" /></Stream></Connect></Response>`;
+      return `<Response>${recordingStart}<Connect><Stream url="${escapeXml(streamUrl)}"><Parameter name="businessId" value="${escapeXml(businessId)}" /><Parameter name="recordingCallbackUrl" value="${escapeXml(recordingCallbackUrl)}" /></Stream></Connect></Response>`;
     }
 
     const lines = [
@@ -826,63 +883,30 @@ export class TelephonyService {
     }
 
     const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
-    const response = await fetch(getTwilioPlaybackUrl(call.recordingUrl), {
-      headers: {
-        Authorization: `Basic ${authHeader}`,
-      },
-    });
+    const playbackUrls = getTwilioPlaybackUrls(call.recordingUrl);
+    let lastFailure = "unknown";
 
-    if (!response.ok || !response.body) {
-      throw new ServiceUnavailableException("Unable to load recording audio from Twilio.");
+    for (const playbackUrl of playbackUrls) {
+      const response = await fetchTwilioRecordingWithRedirects(playbackUrl, authHeader);
+
+      if (response.ok && response.body) {
+        const arrayBuffer = await response.arrayBuffer();
+
+        return {
+          contentType: response.headers.get("content-type") || "audio/mpeg",
+          body: Buffer.from(arrayBuffer),
+        };
+      }
+
+      lastFailure = `${response.status} ${response.statusText}`.trim();
+      this.logger.warn(
+        `Twilio recording playback fetch failed for callId=${call.id}, url=${playbackUrl}, status=${lastFailure}.`,
+      );
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-
-    return {
-      contentType: response.headers.get("content-type") || "audio/mpeg",
-      body: Buffer.from(arrayBuffer),
-    };
-  }
-
-  private async startTwilioLiveRecording(callSid: string, context: LiveRecordingContext) {
-    if (context.started || !context.callbackUrl) {
-      return;
-    }
-
-    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
-    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
-
-    if (!accountSid || !authToken) {
-      this.logger.warn(`Twilio live recording skipped for CallSid=${callSid} because credentials are not configured.`);
-      return;
-    }
-
-    const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Calls/${encodeURIComponent(callSid)}/Recordings.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${authHeader}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: encodeFormBody({
-          RecordingStatusCallback: context.callbackUrl,
-          RecordingStatusCallbackMethod: "POST",
-          RecordingChannels: "mono",
-          RecordingTrack: "both",
-        }),
-      },
+    throw new ServiceUnavailableException(
+      `Unable to load recording audio from Twilio. Upstream status: ${lastFailure}.`,
     );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error(`Twilio live recording start failed for CallSid=${callSid}: ${errorText}`);
-      return;
-    }
-
-    context.started = true;
-    this.logger.log(`Twilio live recording started for CallSid=${callSid}. callback=${context.callbackUrl}`);
   }
 
   async handleLiveAiTurn(businessId: string, payload: TwilioSpeechPayload) {
@@ -959,10 +983,6 @@ export class TelephonyService {
     let responseInFlight = false;
     let latestCallerTranscript = "";
     let latestAssistantTranscript = "";
-    const liveRecordingContext: LiveRecordingContext = {
-      callbackUrl: "",
-      started: false,
-    };
     const callerTurns: string[] = [];
     const assistantTurns: string[] = [];
     const transcriptLines: string[] = [];
@@ -997,14 +1017,7 @@ export class TelephonyService {
           type: "response.create",
           response: {
             output_modalities: ["audio"],
-            instructions: [
-              `Say this opening message clearly and naturally as your first spoken response: ${openingGreeting}`,
-              "Start speaking now with a smooth professional receptionist greeting.",
-              "Do not skip the recording consent line if one is provided.",
-              "Do not wait for the caller before saying this opening greeting.",
-            ]
-              .filter(Boolean)
-              .join(" "),
+            instructions: `Speak only in English. Say exactly this message and nothing else: "${openingGreeting.replaceAll('"', '\\"')}"`,
           },
         }),
       );
@@ -1032,8 +1045,12 @@ export class TelephonyService {
         typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
           ? telephony.consentMessage.trim()
           : "This call may be recorded and transcribed for service quality and follow-up.";
-      activeEmergencyPrompt = business.medicalModeEnabled ? "If this is a medical emergency, please call 911 immediately." : "";
-
+      activeEmergencyPrompt =
+        typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
+          ? rules.emergencyMessage.trim()
+          : business.medicalModeEnabled
+            ? "If this is a medical emergency, please call 911 immediately."
+            : "";
       const apiKey = process.env.OPENAI_API_KEY;
 
       if (!apiKey) {
@@ -1245,9 +1262,6 @@ export class TelephonyService {
             : {};
         businessId =
           (typeof customParameters.businessId === "string" ? customParameters.businessId : "") || businessId;
-        liveRecordingContext.callbackUrl =
-          typeof customParameters.recordingCallbackUrl === "string" ? customParameters.recordingCallbackUrl : "";
-
         if (!businessId) {
           this.logger.warn("Twilio media stream started without a businessId in URL or custom parameters.");
           safeClose();
@@ -1276,7 +1290,6 @@ export class TelephonyService {
           });
         }
 
-        await this.startTwilioLiveRecording(callSid, liveRecordingContext);
         return;
       }
 

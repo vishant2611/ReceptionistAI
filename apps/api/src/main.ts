@@ -5,6 +5,7 @@ import express from "express";
 import { IncomingMessage } from "http";
 import { WebSocketServer } from "ws";
 import { AppModule } from "./app.module";
+import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { TelephonyService } from "./telephony/telephony.service";
 
 async function bootstrap() {
@@ -14,6 +15,7 @@ async function bootstrap() {
 
   app.use(express.text({ type: ["application/sdp", "text/plain"] }));
   app.setGlobalPrefix("api");
+  app.useGlobalFilters(new ZodExceptionFilter());
 
   const port = Number(process.env.PORT ?? 4000);
   const server = await app.listen(port);

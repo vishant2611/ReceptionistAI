@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { apiRequest } from "../../lib/api";
 
-const categories = ["Restaurant", "Cafe", "Salon", "Clinic", "Doctor", "Dental", "Legal", "Real Estate", "Repair", "Other"];
+const categories = ["Restaurant", "Cafe", "Salon", "Clinic", "Doctor", "Dental", "Pharmacy", "Legal", "Real Estate", "Repair", "Other"];
 
 type SignUpResponse = {
   message: string;

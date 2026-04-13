@@ -6,7 +6,7 @@ import { clearSession } from "../../lib/session";
 import { PortalData } from "./use-portal-data";
 
 type PortalShellProps = {
-  active: "dashboard" | "profile" | "menu" | "settings" | "telephony" | "calls" | "team" | "billing";
+  active: "dashboard" | "profile" | "menu" | "refills" | "callbacks" | "settings" | "telephony" | "calls" | "team" | "billing";
   title: string;
   subtitle: string;
   portal: PortalData;
@@ -25,6 +25,20 @@ export function PortalShell({ active, title, subtitle, portal, children }: Porta
       icon: "M",
       href: `/portal/menu?businessId=${businessId}`,
       visible: portal.canManageMenu,
+    },
+    {
+      key: "refills",
+      label: "Refill Requests",
+      icon: "RX",
+      href: `/portal/refill-requests?businessId=${businessId}`,
+      visible: portal.canViewPharmacyWorkflows,
+    },
+    {
+      key: "callbacks",
+      label: "Callback Requests",
+      icon: "CB",
+      href: `/portal/callback-requests?businessId=${businessId}`,
+      visible: portal.canViewPharmacyWorkflows,
     },
     {
       key: "settings",

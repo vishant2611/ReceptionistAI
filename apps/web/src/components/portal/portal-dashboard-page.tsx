@@ -20,6 +20,7 @@ export function PortalDashboardPage({ businessId = "" }: Props) {
     { title: "AI Status", value: portal.business.aiEnabled ? "Live" : "Not live yet" },
     { title: "Team members", value: String(portal.members.length) },
   ];
+  const isPharmacy = portal.business.category === "PHARMACY";
 
   return (
     <PortalShell
@@ -50,6 +51,18 @@ export function PortalDashboardPage({ businessId = "" }: Props) {
           <h3>Telephony readiness</h3>
           <p>Prepare Twilio routing, fallback handoff, consent messaging, and live AI call connection rules.</p>
         </article>
+        {isPharmacy ? (
+          <>
+            <article className="feature-card">
+              <h3>Refill tracking</h3>
+              <p>Log refill requests with statuses like under review, approved, and ready for pickup.</p>
+            </article>
+            <article className="feature-card">
+              <h3>Pharmacist callbacks</h3>
+              <p>Track who still needs a callback, which requests are urgent, and whether follow-up has happened.</p>
+            </article>
+          </>
+        ) : null}
         {portal.canViewBilling ? (
           <article className="feature-card">
             <h3>Billing visibility</h3>
