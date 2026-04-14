@@ -141,6 +141,27 @@ function extractPharmacyRefillRequests(value: unknown) {
     .filter((request) => request.id && request.patientName && request.phoneNumber && request.medicationName);
 }
 
+function extractDismissedPharmacyRefillRequestIds(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const rules = value as Record<string, unknown>;
+  const pharmacy = rules.pharmacy;
+
+  if (!pharmacy || typeof pharmacy !== "object" || Array.isArray(pharmacy)) {
+    return [];
+  }
+
+  const dismissed = (pharmacy as Record<string, unknown>).dismissedRefillRequestIds;
+
+  if (!Array.isArray(dismissed)) {
+    return [];
+  }
+
+  return dismissed.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+}
+
 function extractPharmacyCallbackRequests(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return [];
@@ -180,8 +201,140 @@ function extractPharmacyCallbackRequests(value: unknown) {
     .filter((request) => request.id && request.patientName && request.phoneNumber && request.reason);
 }
 
+function extractDismissedPharmacyCallbackRequestIds(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const rules = value as Record<string, unknown>;
+  const pharmacy = rules.pharmacy;
+
+  if (!pharmacy || typeof pharmacy !== "object" || Array.isArray(pharmacy)) {
+    return [];
+  }
+
+  const dismissed = (pharmacy as Record<string, unknown>).dismissedCallbackRequestIds;
+
+  if (!Array.isArray(dismissed)) {
+    return [];
+  }
+
+  return dismissed.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+}
+
 function normalizePhoneNumber(value: string | null | undefined) {
   return String(value ?? "").trim();
+}
+
+function extractCallerTranscriptLines(transcript: string | null | undefined) {
+  return String(transcript ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("Caller:"))
+    .map((line) => line.replace(/^Caller:\s*/i, "").trim())
+    .filter(Boolean);
+}
+
+function firstMatchingCallerLine(lines: string[], expression: RegExp) {
+  return lines.find((line) => expression.test(line)) || "";
+}
+
+function findMedicationCallerLine(lines: string[]) {
+  return (
+    lines.find((line) => /\b\d+\s*(?:mg|mcg|ml)\b/i.test(line) && /(order|refill|prescription|medicine|medication|it'?s|it is)/i.test(line)) ||
+    lines.find((line) => /(order|refill)\s+(?:a|an|my)?\s*[A-Za-z]/i.test(line) && !/\b(?:medicine|medication|prescription)\b$/i.test(line.trim())) ||
+    firstMatchingCallerLine(lines, /(?:it'?s|it is|order|refill|prescription|medicine|medication)/i)
+  );
+}
+
+function findPickupCallerLine(lines: string[]) {
+  return (
+    lines.find((line) => /(tomorrow|today|\d{1,2}(?::\d{2})?\s*(?:a\.m\.|p\.m\.|am|pm))/i.test(line) && /(pickup|pick up|at|after|around|for)/i.test(line)) ||
+    firstMatchingCallerLine(lines, /(?:pickup|pick up|a\.m\.|p\.m\.|am|pm|tomorrow|today)/i)
+  );
+}
+
+function extractPatientName(source: string, fallbackName?: string | null) {
+  const match =
+    source.match(/(?:my full name is|my name is|this is)\s+([A-Za-z][A-Za-z\s'-]{1,80})/i) ||
+    source.match(/name[:\s]+([A-Za-z][A-Za-z\s'-]{1,80})/i);
+
+  return match?.[1]?.trim() || fallbackName?.trim() || "Not provided";
+}
+
+function extractSpokenPhoneNumber(source: string, fallbackPhone?: string | null) {
+  const match =
+    source.match(/(?:phone number is|reach me at|it's|it is|call me at|yeah[, ]*)\s*([0-9()\-\s+]{7,25})/i) ||
+    source.match(/\b([0-9][0-9()\-\s+]{8,24})\b/);
+
+  if (match?.[1]) {
+    const raw = match[1].trim().replace(/\s+/g, " ");
+    const digits = raw.replace(/\D/g, "");
+
+    if (digits.length === 10) {
+      return digits;
+    }
+
+    if (digits.length === 11 && digits.startsWith("1")) {
+      return digits.slice(1);
+    }
+
+    return raw;
+  }
+
+  return String(fallbackPhone ?? "").trim();
+}
+
+function extractMedicationName(source: string) {
+  const explicitMatch =
+    source.match(/(?:it'?s|it is)\s+([A-Za-z][A-Za-z0-9\s/-]{1,60}(?:mg|mcg|ml)?)\.?/i) ||
+    source.match(/(?:want|would like)(?:\s+to)?\s+(?:order|refill)\s+(?:a|an|my)?\s*([A-Za-z][A-Za-z0-9/-]*(?:\s+[A-Za-z0-9/-]+){0,4})/i) ||
+    source.match(/(?:order|refill)\s+(?:a|an|my)?\s*([A-Za-z][A-Za-z0-9/-]*(?:\s+[A-Za-z0-9/-]+){0,4})/i) ||
+    source.match(/(?:refill(?: my)? prescription for|refill(?: my)? medication for|prescription for|medication for)\s+([A-Za-z0-9][A-Za-z0-9\s/-]{1,80})/i);
+
+  if (explicitMatch?.[1]) {
+    const cleaned = explicitMatch[1]
+      .trim()
+      .replace(/[.,]$/, "")
+      .replace(/^(?:a|an|my)\s+/i, "");
+
+    if (!/^(medicine|medication|prescription)$/i.test(cleaned)) {
+      return cleaned;
+    }
+  }
+
+  const genericMatch = source.match(/(?:refill|prescription|medication|medicine)\s+([A-Za-z0-9][A-Za-z0-9\s/-]{1,80})/i);
+  const genericValue = genericMatch?.[1]?.trim().replace(/[.,]$/, "") || "";
+
+  if (genericValue && !/^(my medicine|my medication|my prescription|medicine|medication|prescription)$/i.test(genericValue)) {
+    return genericValue;
+  }
+
+  return "Medication request captured by AI";
+}
+
+function extractPickupPreference(source: string) {
+  const explicitTime =
+    source.match(/(?:pickup|pick up).{0,20}\b(at|after|around|for)\s+([^.!?\n]{2,40})/i) ||
+    source.match(/\b(at|after|around|for)\s+(\d{1,2}(?::\d{2})?\s*(?:a\.m\.|p\.m\.|am|pm)|tomorrow|today[^.!?\n]*)/i);
+
+  if (explicitTime?.[2]) {
+    return explicitTime[2].trim().replace(/[.,]$/, "");
+  }
+
+  return /\bpickup|pick up\b/i.test(source) ? "pickup" : "";
+}
+
+function buildRefillNotes(medicationName: string, pickupTime: string) {
+  if (pickupTime) {
+    return `Patient requested a refill for ${medicationName} and asked for pickup ${pickupTime}. Team should confirm prescription details.`;
+  }
+
+  return `Patient requested a refill for ${medicationName}. Team should confirm prescription details and pickup timing.`;
+}
+
+function buildCallbackNotes(reason: string) {
+  return `Patient requested a pharmacist callback regarding: ${reason}.`;
 }
 
 function derivePharmacyRefillRequestFromCall(call: {
@@ -193,28 +346,35 @@ function derivePharmacyRefillRequestFromCall(call: {
   startedAt: Date;
 }) {
   const source = `${call.summary || ""}\n${call.transcript || ""}`.trim();
+  const callerLines = extractCallerTranscriptLines(call.transcript);
+  const callerSource = callerLines.join(" ");
 
   if (!/(refill|prescription|pickup|medication|medicine)/i.test(source)) {
     return null;
   }
 
-  const medicationMatch =
-    source.match(/(?:refill(?: request)? for|medication(?: name)? is|medicine(?: name)? is|prescription(?: for)?)[\s:]+([A-Za-z0-9][A-Za-z0-9\s/-]{1,80})/i) ||
-    source.match(/Caller:\s.*?(?:for|about)\s+([A-Za-z0-9][A-Za-z0-9\s/-]{1,80})(?:\.|,|\n)/i);
-  const pickupMatch = source.match(/(?:pickup|pick up)[\s:]+([A-Za-z0-9 :,.-]{2,80})/i);
   const requestDate = call.startedAt.toISOString().slice(0, 10);
+  const patientLine = firstMatchingCallerLine(callerLines, /(?:my full name is|my name is|this is|name[:\s]+)/i);
+  const phoneLine = firstMatchingCallerLine(callerLines, /(?:phone number|reach me|it'?s|it is|call me at|yeah[, ]*|^\d[\d\s()+-]{8,})/i);
+  const medicationLine = findMedicationCallerLine(callerLines);
+  const pickupLine = findPickupCallerLine(callerLines);
+
+  const patientName = extractPatientName(patientLine || callerSource, call.callerName);
+  const phoneNumber = extractSpokenPhoneNumber(phoneLine || callerSource, call.callerNumber);
+  const medicationName = extractMedicationName(medicationLine || callerSource || source);
+  const preferredPickupTime = extractPickupPreference(pickupLine || callerSource);
 
   return {
     id: `call-${call.id}`,
-    patientName: call.callerName?.trim() || "Unknown patient",
-    phoneNumber: normalizePhoneNumber(call.callerNumber),
-    medicationName: medicationMatch?.[1]?.trim() || "Medication request captured by AI",
+    patientName,
+    phoneNumber: normalizePhoneNumber(phoneNumber),
+    medicationName,
     prescriptionNumber: "",
     requestedOn: requestDate,
-    preferredPickupTime: pickupMatch?.[1]?.trim() || "",
-    notes: source.slice(0, 280),
+    preferredPickupTime,
+    notes: buildRefillNotes(medicationName, preferredPickupTime),
     assignedTo: "",
-    status: /(ready for pickup|ready to pick up)/i.test(source) ? "READY_FOR_PICKUP" : "NEW",
+    status: "NEW",
   };
 }
 
@@ -227,21 +387,28 @@ function derivePharmacyCallbackRequestFromCall(call: {
   startedAt: Date;
 }) {
   const source = `${call.summary || ""}\n${call.transcript || ""}`.trim();
+  const callerLines = extractCallerTranscriptLines(call.transcript);
+  const callerSource = callerLines.join(" ");
 
   if (!/(callback|call back|speak with pharmacist|pharmacist call)/i.test(source)) {
     return null;
   }
 
   const reasonMatch =
-    source.match(/(?:callback(?: request)?|call back(?: request)?|reason(?: for callback)?)[\s:]+([A-Za-z0-9][A-Za-z0-9\s,.'/-]{3,120})/i) ||
-    source.match(/Caller:\s(.{8,180})/i);
+    callerSource.match(/(?:callback(?: request)?|call back(?: request)?|reason(?: for callback)?)[\s:]+([A-Za-z0-9][A-Za-z0-9\s,.'/-]{3,120})/i) ||
+    callerSource.match(/^(.{8,180})$/i);
+  const patientLine = firstMatchingCallerLine(callerLines, /(?:my full name is|my name is|this is|name[:\s]+)/i);
+  const phoneLine = firstMatchingCallerLine(callerLines, /(?:phone number|reach me|it'?s|it is|call me at|yeah[, ]*|^\d[\d\s()+-]{8,})/i);
+  const patientName = extractPatientName(patientLine || callerSource, call.callerName);
+  const phoneNumber = extractSpokenPhoneNumber(phoneLine || callerSource, call.callerNumber);
+  const reason = reasonMatch?.[1]?.trim() || "Patient requested a pharmacist callback.";
 
   return {
     id: `call-${call.id}`,
-    patientName: call.callerName?.trim() || "Unknown patient",
-    phoneNumber: normalizePhoneNumber(call.callerNumber),
-    reason: reasonMatch?.[1]?.trim() || "Patient requested a pharmacist callback.",
-    notes: source.slice(0, 280),
+    patientName,
+    phoneNumber: normalizePhoneNumber(phoneNumber),
+    reason,
+    notes: buildCallbackNotes(reason),
     requestedOn: call.startedAt.toISOString().slice(0, 10),
     priority: /(urgent|as soon as possible|right away)/i.test(source) ? "URGENT" : "NORMAL",
     assignedTo: "",
@@ -776,6 +943,14 @@ export class BusinessesService {
     this.assertPharmacyBusiness(business.category);
 
     const savedRequests = extractPharmacyRefillRequests(business.answeringRules);
+
+    if (savedRequests.length > 0) {
+      return {
+        requests: savedRequests,
+      };
+    }
+
+    const dismissedRequestIds = new Set(extractDismissedPharmacyRefillRequestIds(business.answeringRules));
     const calls = await this.prisma.call.findMany({
       where: { businessId },
       orderBy: {
@@ -785,7 +960,8 @@ export class BusinessesService {
 
     const derivedRequests = calls
       .map((call) => derivePharmacyRefillRequestFromCall(call))
-      .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyRefillRequestFromCall>> => Boolean(request));
+      .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyRefillRequestFromCall>> => Boolean(request))
+      .filter((request) => !dismissedRequestIds.has(request.id));
 
     const mergedRequests = new Map<string, (typeof savedRequests)[number]>();
 
@@ -832,6 +1008,22 @@ export class BusinessesService {
       status: request.status,
     }));
 
+    const calls = await this.prisma.call.findMany({
+      where: { businessId },
+      orderBy: {
+        startedAt: "desc",
+      },
+    });
+
+    const derivedRequestIds = new Set(
+      calls
+        .map((call) => derivePharmacyRefillRequestFromCall(call))
+        .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyRefillRequestFromCall>> => Boolean(request))
+        .map((request) => request.id),
+    );
+    const keptRequestIds = new Set(requests.map((request) => request.id));
+    const dismissedRefillRequestIds = Array.from(derivedRequestIds).filter((requestId) => !keptRequestIds.has(requestId));
+
     const business = await this.prisma.business.update({
       where: { id: businessId },
       data: {
@@ -840,6 +1032,7 @@ export class BusinessesService {
           pharmacy: {
             ...previousPharmacy,
             refillRequests: requests,
+            dismissedRefillRequestIds,
             updatedAt: new Date().toISOString(),
           },
         },
@@ -864,6 +1057,14 @@ export class BusinessesService {
     this.assertPharmacyBusiness(business.category);
 
     const savedRequests = extractPharmacyCallbackRequests(business.answeringRules);
+
+    if (savedRequests.length > 0) {
+      return {
+        requests: savedRequests,
+      };
+    }
+
+    const dismissedRequestIds = new Set(extractDismissedPharmacyCallbackRequestIds(business.answeringRules));
     const calls = await this.prisma.call.findMany({
       where: { businessId },
       orderBy: {
@@ -873,7 +1074,8 @@ export class BusinessesService {
 
     const derivedRequests = calls
       .map((call) => derivePharmacyCallbackRequestFromCall(call))
-      .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyCallbackRequestFromCall>> => Boolean(request));
+      .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyCallbackRequestFromCall>> => Boolean(request))
+      .filter((request) => !dismissedRequestIds.has(request.id));
 
     const mergedRequests = new Map<string, (typeof savedRequests)[number]>();
 
@@ -920,6 +1122,22 @@ export class BusinessesService {
       status: request.status,
     }));
 
+    const calls = await this.prisma.call.findMany({
+      where: { businessId },
+      orderBy: {
+        startedAt: "desc",
+      },
+    });
+
+    const derivedRequestIds = new Set(
+      calls
+        .map((call) => derivePharmacyCallbackRequestFromCall(call))
+        .filter((request): request is NonNullable<ReturnType<typeof derivePharmacyCallbackRequestFromCall>> => Boolean(request))
+        .map((request) => request.id),
+    );
+    const keptRequestIds = new Set(requests.map((request) => request.id));
+    const dismissedCallbackRequestIds = Array.from(derivedRequestIds).filter((requestId) => !keptRequestIds.has(requestId));
+
     const business = await this.prisma.business.update({
       where: { id: businessId },
       data: {
@@ -928,6 +1146,7 @@ export class BusinessesService {
           pharmacy: {
             ...previousPharmacy,
             callbackRequests: requests,
+            dismissedCallbackRequestIds,
             updatedAt: new Date().toISOString(),
           },
         },

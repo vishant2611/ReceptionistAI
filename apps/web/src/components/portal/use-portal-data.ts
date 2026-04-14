@@ -187,7 +187,8 @@ export function usePortalData(businessId = ""): PortalData {
         (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER" || activeRole === "STAFF") &&
         isPharmacyBusinessCategory(business?.category),
       canManagePharmacyWorkflows:
-        (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER") && isPharmacyBusinessCategory(business?.category),
+        (activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER" || activeRole === "STAFF") &&
+        isPharmacyBusinessCategory(business?.category),
       isPharmacyBusiness: isPharmacyBusinessCategory(business?.category),
       refreshBusiness,
       refreshMembers,
