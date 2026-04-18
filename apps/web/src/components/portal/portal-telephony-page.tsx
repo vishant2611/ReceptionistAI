@@ -65,6 +65,7 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
     postCallSmsEnabled: telephony.postCallSmsEnabled ?? false,
   };
   const inboundWebhookUrl = `${apiBaseUrl}/api/telephony/twilio/voice/${business.id}/inbound`;
+  const sharedInboundWebhookUrl = `${apiBaseUrl}/api/telephony/twilio/voice/inbound`;
   const openAiRealtimeUrl = `${apiBaseUrl}/api/telephony/realtime/${business.id}/session`;
   const twilioMediaBridgeUrl = apiBaseUrl.replace(/^http/i, "ws") + `/ws/twilio-media?businessId=${business.id}`;
 
@@ -346,6 +347,12 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
             <div className="detail-block">
               <h3>Inbound webhook URL</h3>
               <p className="code-inline">{inboundWebhookUrl}</p>
+            </div>
+
+            <div className="detail-block">
+              <h3>Shared inbound webhook URL</h3>
+              <p className="code-inline">{sharedInboundWebhookUrl}</p>
+              <p>Use this shared URL when you want Twilio to route calls automatically by the called Twilio number saved on this page.</p>
             </div>
 
             <div className="detail-block">

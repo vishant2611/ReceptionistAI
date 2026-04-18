@@ -6,6 +6,16 @@ import { TelephonyService } from "./telephony.service";
 export class TelephonyController {
   constructor(private readonly telephonyService: TelephonyService) {}
 
+  @All("twilio/voice/inbound")
+  @Header("Content-Type", "text/xml")
+  async handleTwilioInboundByNumber(
+    @Req() req: Request,
+    @Body() body: Record<string, string | undefined>,
+  ) {
+    const baseUrl = this.telephonyService.buildBaseUrlFromHeaders(req.headers);
+    return this.telephonyService.handleTwilioInboundCallByNumberWithBaseUrl(body, baseUrl);
+  }
+
   @All("twilio/voice/:businessId/inbound")
   @Header("Content-Type", "text/xml")
   async handleTwilioInbound(

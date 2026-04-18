@@ -106,6 +106,16 @@ function normalizeText(value: string) {
   return value.toLowerCase();
 }
 
+function normalizePhoneLookup(value: string | null | undefined) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return digits.slice(1);
+  }
+
+  return digits;
+}
+
 function mapVoicePreferenceToRealtimeVoice(voicePreference: string | null | undefined) {
   const value = normalizeText(voicePreference || "");
 
@@ -960,6 +970,39 @@ export class TelephonyService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private async findBusinessByTwilioNumber(twilioNumber: string | null | undefined) {
+    const normalizedTarget = normalizePhoneLookup(twilioNumber);
+
+    if (!normalizedTarget) {
+      return null;
+    }
+
+    const businesses = await this.prisma.business.findMany({
+      select: {
+        id: true,
+        name: true,
+        phoneNumber: true,
+        answeringRules: true,
+      },
+    });
+
+    return (
+      businesses.find((business) => {
+        const telephony = readTelephonySettings(business.answeringRules);
+        const configuredTwilioNumber =
+          typeof telephony.twilioNumber === "string" ? telephony.twilioNumber.trim() : "";
+        const configuredBusinessNumber =
+          typeof telephony.businessNumber === "string" ? telephony.businessNumber.trim() : "";
+
+        return [
+          configuredTwilioNumber,
+          configuredBusinessNumber,
+          business.phoneNumber,
+        ].some((candidate) => normalizePhoneLookup(candidate) === normalizedTarget);
+      }) || null
+    );
+  }
+
   private resolveTwilioCredentials(telephonySettings: unknown) {
     const telephony = readTelephonySettings(telephonySettings);
     const accountSid =
@@ -1344,6 +1387,24 @@ export class TelephonyService {
 
   async handleTwilioInboundCall(businessId: string, payload: TwilioInboundPayload) {
     return this.handleTwilioInboundCallWithBaseUrl(businessId, payload, "");
+  }
+
+  async handleTwilioInboundCallByNumber(payload: TwilioInboundPayload) {
+    return this.handleTwilioInboundCallByNumberWithBaseUrl(payload, "");
+  }
+
+  async handleTwilioInboundCallByNumberWithBaseUrl(payload: TwilioInboundPayload, baseUrl: string) {
+    const business = await this.findBusinessByTwilioNumber(payload.To);
+
+    if (!business) {
+      this.logger.warn(
+        `Twilio inbound call could not be matched to a business by called number=${payload.To?.trim() || "unknown"}.`,
+      );
+
+      return `<Response><Say voice="alice">We could not match this phone number to a business yet. Please contact support to finish the Twilio setup.</Say><Hangup/></Response>`;
+    }
+
+    return this.handleTwilioInboundCallWithBaseUrl(business.id, payload, baseUrl);
   }
 
   async handleTwilioInboundCallWithBaseUrl(businessId: string, payload: TwilioInboundPayload, baseUrl: string) {
