@@ -41,6 +41,14 @@ function readRules(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function readTelephonySettings(value: unknown) {
+  const rules = readRules(value);
+  const telephony = rules.telephony;
+  return telephony && typeof telephony === "object" && !Array.isArray(telephony)
+    ? (telephony as Record<string, unknown>)
+    : {};
+}
+
 function inferBaseUrl(headers: Record<string, string | string[] | undefined>) {
   const protoHeader = headers["x-forwarded-proto"];
   const hostHeader = headers["x-forwarded-host"] ?? headers.host;
@@ -137,8 +145,8 @@ function formatOfficeHours(officeHours: unknown) {
     .join(", ");
 }
 
-function buildRealtimeSummary(callerTurns: string[]) {
-  const structuredSummary = extractStructuredSummary(callerTurns);
+function buildRealtimeSummary(callerTurns: string[], assistantTurns: string[] = []) {
+  const structuredSummary = extractStructuredSummary(callerTurns, assistantTurns);
 
   if (structuredSummary) {
     return structuredSummary;
@@ -629,19 +637,88 @@ function extractPickupTime(callerTurns: string[]) {
   return parts.join(" ");
 }
 
-function extractStructuredSummary(callerTurns: string[]) {
+function extractRequestedItem(callerTurns: string[]) {
+  const patterns = [
+    /\b(?:order|want to order|like to order)\s+([A-Za-z][A-Za-z0-9\s'-]{2,80})/i,
+    /\b([A-Za-z][A-Za-z0-9\s'-]{2,80})\s+for\s+\d+\s+(?:people|person|orders|plates|portions)\b/i,
+  ];
+
+  for (const turn of [...callerTurns].reverse()) {
+    for (const pattern of patterns) {
+      const match = turn.match(pattern);
+
+      if (!match?.[1]) {
+        continue;
+      }
+
+      const candidate = match[1]
+        .trim()
+        .replace(/^(?:a|an|the)\s+/i, "")
+        .replace(/[.?,]$/, "");
+
+      if (!/^(medicine|medication|prescription|something|anything)$/i.test(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return "";
+}
+
+function hasHoursQuestion(callerTurns: string[]) {
+  return callerTurns.some((turn) => /(hours|open|close|closing|opening|what time)/i.test(turn));
+}
+
+function hasAddressQuestion(callerTurns: string[]) {
+  return callerTurns.some((turn) => /(address|location|where are you|where is the store)/i.test(turn));
+}
+
+function hasCallbackRequest(callerTurns: string[]) {
+  return callerTurns.some((turn) => /(call me|callback|call back|reach me)/i.test(turn));
+}
+
+function hasPhoneCaptured(callerTurns: string[]) {
+  return callerTurns.some((turn) => /(phone number|reach me|call me at|\b\d{7,}\b|\d{3}[-)\s]?\d{3}[-\s]?\d{4})/i.test(turn));
+}
+
+function extractConfirmedOrderPhrase(assistantTurns: string[]) {
+  const patterns = [
+    /(?:your order for|i['’]ve got your order for|we['’]ve got your order for)\s+(.+?)(?:\s+is set|\s+for pickup|,?\s+ready|\.|$)/i,
+    /(?:i['’]ve got)\s+(.+?)(?:\s+for pickup|\.|$)/i,
+  ];
+
+  for (const turn of [...assistantTurns].reverse()) {
+    for (const pattern of patterns) {
+      const match = turn.match(pattern);
+
+      if (match?.[1]) {
+        return match[1].trim().replace(/[.?,]$/, "");
+      }
+    }
+  }
+
+  return "";
+}
+
+function extractStructuredSummary(callerTurns: string[], assistantTurns: string[] = []) {
   const meaningfulTurns = callerTurns.filter((turn) => !isLowQualityEnglishTranscript(turn));
 
   if (meaningfulTurns.length === 0) {
     return "";
   }
 
+  const requestedItem = extractRequestedItem(meaningfulTurns);
   const latestOrderTurn = [...meaningfulTurns]
     .reverse()
     .find((turn) => /(order|pickup|deliver|delivery|for\s+\d+|today|tomorrow|p\.m\.|a\.m\.)/i.test(turn));
   const latestCallbackTurn = [...meaningfulTurns]
     .reverse()
     .find((turn) => /(call me|callback|manager|phone number|reach me)/i.test(turn));
+  const askedForHours = hasHoursQuestion(meaningfulTurns);
+  const askedForAddress = hasAddressQuestion(meaningfulTurns);
+  const requestedCallback = hasCallbackRequest(meaningfulTurns);
+  const phoneCaptured = hasPhoneCaptured(meaningfulTurns);
+  const confirmedOrderPhrase = extractConfirmedOrderPhrase(assistantTurns);
 
   if (latestOrderTurn) {
     const itemCategory = extractRequestedCategory(meaningfulTurns);
@@ -649,11 +726,23 @@ function extractStructuredSummary(callerTurns: string[]) {
     const pickupTime = extractPickupTime(meaningfulTurns);
     const parts = [
       "Caller placed a pending order request",
-      quantityPhrase ? `for ${quantityPhrase}` : "",
-      itemCategory ? `${quantityPhrase ? "of" : "for"} ${itemCategory}` : "",
+      confirmedOrderPhrase
+        ? `for ${confirmedOrderPhrase}`
+        : quantityPhrase
+          ? `for ${quantityPhrase}` : "",
+      !confirmedOrderPhrase && requestedItem
+        ? `${quantityPhrase ? "of" : "for"} ${requestedItem}`
+        : !confirmedOrderPhrase && itemCategory
+          ? `${quantityPhrase ? "of" : "for"} ${itemCategory}`
+          : "",
       pickupTime ? `for ${pickupTime}` : "",
     ].filter(Boolean);
-    const callbackSuffix = latestCallbackTurn ? " Contact details were also discussed for follow-up." : "";
+    const extraNotes = [
+      phoneCaptured ? "Contact details were also discussed for follow-up." : "Phone number was not captured.",
+      askedForHours ? "Store hours were also discussed." : "",
+      askedForAddress ? "Address details were also discussed." : "",
+    ].filter(Boolean);
+    const callbackSuffix = extraNotes.length > 0 ? ` ${extraNotes.join(" ")}` : "";
 
     if (parts.length > 1) {
       return `${toSentenceCase(parts.join(" ").replace(/\s+/g, " ").trim())}.${callbackSuffix}`.replace("..", ".");
@@ -662,8 +751,33 @@ function extractStructuredSummary(callerTurns: string[]) {
     return `Caller placed a pending order request: ${latestOrderTurn.slice(0, 180)}.${callbackSuffix}`.replace("..", ".");
   }
 
-  if (latestCallbackTurn) {
-    return `Caller requested follow-up: ${latestCallbackTurn.slice(0, 180)}.`;
+  if (requestedCallback && askedForHours && askedForAddress) {
+    return "Caller requested a callback and also asked about the business address and store hours.";
+  }
+
+  if (requestedCallback && askedForHours) {
+    return "Caller requested a callback and also asked about store hours.";
+  }
+
+  if (requestedCallback && askedForAddress) {
+    return "Caller requested a callback and also asked about the business address.";
+  }
+
+  if (askedForHours && askedForAddress) {
+    return "Caller asked about the business address and store hours.";
+  }
+
+  if (askedForHours) {
+    return "Caller asked about store hours.";
+  }
+
+  if (askedForAddress) {
+    return "Caller asked about the business address.";
+  }
+
+  if (latestCallbackTurn || requestedCallback) {
+    const callbackDetail = latestCallbackTurn?.slice(0, 180) || "Caller requested a callback or follow-up.";
+    return `Caller requested follow-up: ${callbackDetail}.`;
   }
 
   return "";
@@ -737,6 +851,78 @@ function collectTranscriptText(value: unknown): string[] {
   return [];
 }
 
+function extractResponseText(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (typeof record.output_text === "string" && record.output_text.trim()) {
+    return record.output_text;
+  }
+
+  const output = record.output;
+
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  const parts: string[] = [];
+
+  for (const item of output) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const content = (item as Record<string, unknown>).content;
+
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const entry of content) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        continue;
+      }
+
+      const textValue = (entry as Record<string, unknown>).text;
+
+      if (typeof textValue === "string" && textValue.trim()) {
+        parts.push(textValue);
+      }
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
+function extractTurnsFromTranscript(transcript: string | null | undefined) {
+  const callerTurns: string[] = [];
+  const assistantTurns: string[] = [];
+
+  for (const line of String(transcript ?? "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("Caller:")) {
+      const value = trimmed.replace(/^Caller:\s*/i, "").trim();
+      if (value) {
+        callerTurns.push(value);
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith("Assistant:")) {
+      const value = trimmed.replace(/^Assistant:\s*/i, "").trim();
+      if (value) {
+        assistantTurns.push(value);
+      }
+    }
+  }
+
+  return { callerTurns, assistantTurns };
+}
+
 function defaultServiceSummary(category: string) {
   const value = normalizeText(category);
 
@@ -763,11 +949,150 @@ function defaultServiceSummary(category: string) {
   return "general customer inquiries, booking requests, order capture, and callback messages";
 }
 
+function isFoodBusinessCategory(category: string) {
+  const value = normalizeText(category);
+  return value.includes("restaurant") || value.includes("cafe") || value.includes("bakery");
+}
+
 @Injectable()
 export class TelephonyService {
   private readonly logger = new Logger(TelephonyService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private resolveTwilioCredentials(telephonySettings: unknown) {
+    const telephony = readTelephonySettings(telephonySettings);
+    const accountSid =
+      (typeof telephony.twilioAccountSid === "string" ? telephony.twilioAccountSid.trim() : "") ||
+      process.env.TWILIO_ACCOUNT_SID?.trim() ||
+      "";
+    const authToken =
+      (typeof telephony.twilioAuthToken === "string" ? telephony.twilioAuthToken.trim() : "") ||
+      process.env.TWILIO_AUTH_TOKEN?.trim() ||
+      "";
+    const phoneNumber =
+      (typeof telephony.twilioNumber === "string" ? telephony.twilioNumber.trim() : "") ||
+      process.env.TWILIO_PHONE_NUMBER?.trim() ||
+      "";
+
+    return { accountSid, authToken, phoneNumber };
+  }
+
+  private async generateStructuredCallSummary(callId: string) {
+    const call = await this.prisma.call.findUnique({
+      where: { id: callId },
+      include: {
+        business: true,
+      },
+    });
+
+    if (!call) {
+      return;
+    }
+
+    const { callerTurns, assistantTurns } = extractTurnsFromTranscript(call.transcript);
+    const fallbackSummary = buildRealtimeSummary(callerTurns, assistantTurns);
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (!apiKey || !(call.transcript || "").trim()) {
+      await this.prisma.call.update({
+        where: { id: call.id },
+        data: {
+          summary: fallbackSummary,
+        },
+      });
+      return;
+    }
+
+    const prompt = [
+      `Business name: ${call.business.name}`,
+      `Business category: ${call.business.category}`,
+      "Task: Write one concise, professional operational summary of this call for the business owner.",
+      "Requirements:",
+      "- Use only facts clearly stated in the transcript.",
+      "- Make it useful enough that the owner does not need to open the transcript.",
+      "- If this is an order or booking request, include exact item/service, quantity, pickup/delivery/timing, and whether name/phone were captured.",
+      "- If this is a callback request, include callback intent and whether contact details were captured.",
+      "- If the caller asked about address or store hours, mention that clearly.",
+      "- If important details are missing, explicitly say what is missing.",
+      "- Do not mention recording URLs, stream IDs, or internal system details.",
+      "- Keep it to 1-2 sentences maximum.",
+      "",
+      "Transcript:",
+      call.transcript || "",
+    ].join("\n");
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: [
+            {
+              role: "system",
+              content: [
+                {
+                  type: "input_text",
+                  text: "You write short, highly accurate operational call summaries for businesses.",
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        output_text?: string;
+        output?: unknown;
+        error?: { message?: string };
+      };
+
+      if (!response.ok) {
+        this.logger.warn(
+          `Structured call summary generation failed for callId=${call.id}: ${payload.error?.message || response.statusText}`,
+        );
+        await this.prisma.call.update({
+          where: { id: call.id },
+          data: {
+            summary: fallbackSummary,
+          },
+        });
+        return;
+      }
+
+      const summary = extractResponseText(payload).trim() || fallbackSummary;
+
+      await this.prisma.call.update({
+        where: { id: call.id },
+        data: {
+          summary,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Structured call summary generation threw for callId=${call.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await this.prisma.call.update({
+        where: { id: call.id },
+        data: {
+          summary: fallbackSummary,
+        },
+      });
+    }
+  }
 
   private buildRealtimeInstructions(
     business: {
@@ -810,6 +1135,7 @@ export class TelephonyService {
     const answerMode =
       typeof rules.primaryMode === "string" ? rules.primaryMode : "ALL_CALLS";
     const menuCatalog = extractMenuCatalog(rules);
+    const foodBusiness = isFoodBusinessCategory(business.category);
     const consentMessage =
       typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
         ? telephony.consentMessage.trim()
@@ -866,6 +1192,13 @@ export class TelephonyService {
       "Never repeat or summarize a caller name, quantity, phone number, pickup time, or order item unless the caller explicitly said it clearly in the conversation.",
       "If a caller gives only partial order details, explicitly ask for the missing fields instead of guessing.",
       "If you are uncertain about a name, phone number, quantity, or item, say that you did not catch it clearly and ask the caller to repeat it.",
+      ...(foodBusiness
+        ? [
+            "For restaurant, cafe, and bakery pickup or delivery orders, do not end the order flow until you have captured the exact item, quantity, fulfillment method, pickup or delivery timing, customer name, and customer phone number.",
+            "If phone number is missing, you must ask for it before closing the order.",
+            "If the caller refuses or does not provide a phone number, clearly state that the order request is incomplete without a callback number and ask once more before ending the call.",
+          ]
+        : []),
       "When discussing dates or weekdays, rely on the current local business date provided above.",
       "If the caller asks for services and the services summary is sparse, use the business summary as fallback before saying details are still being confirmed.",
       "If the caller asks about hours and the office hours are not configured, say the hours are still being finalized in the portal and offer to capture a callback request.",
@@ -1138,6 +1471,7 @@ export class TelephonyService {
         },
       });
       await this.syncPharmacyWorkflowsFromCall(call.id);
+      await this.generateStructuredCallSummary(call.id);
       this.logger.log(`Saved recording URL for callId=${call.id}.`);
     } else {
       this.logger.warn(
@@ -1162,6 +1496,7 @@ export class TelephonyService {
         },
       });
       await this.syncPharmacyWorkflowsFromCall(call.id);
+      await this.generateStructuredCallSummary(call.id);
     }
 
     return { ok: true };
@@ -1264,14 +1599,16 @@ export class TelephonyService {
   async getRecordingStream(callId: string) {
     const call = await this.prisma.call.findUnique({
       where: { id: callId },
+      include: {
+        business: true,
+      },
     });
 
     if (!call?.recordingUrl) {
       throw new NotFoundException("Recording not found.");
     }
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
-    const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+    const { accountSid, authToken } = this.resolveTwilioCredentials(call.business?.answeringRules);
 
     if (!accountSid || !authToken) {
       throw new ServiceUnavailableException("Twilio credentials are not configured yet.");
@@ -1376,6 +1713,8 @@ export class TelephonyService {
     let activeEmergencyPrompt = "";
     let introSent = false;
     let responseInFlight = false;
+    let callerSpeechPending = false;
+    let responseRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
     let latestCallerTranscript = "";
     let latestAssistantTranscript = "";
     const callerTurns: string[] = [];
@@ -1392,7 +1731,7 @@ export class TelephonyService {
       await this.prisma.call.update({
         where: { id: currentCallId },
         data: {
-          summary: summary || buildRealtimeSummary(callerTurns),
+          summary: summary || buildRealtimeSummary(callerTurns, assistantTurns),
           transcript: transcriptLines.join("\n\n"),
           endedAt: endedAt || undefined,
         },
@@ -1400,7 +1739,49 @@ export class TelephonyService {
 
       if (endedAt) {
         await this.syncPharmacyWorkflowsFromCall(currentCallId);
+        await this.generateStructuredCallSummary(currentCallId);
       }
+    };
+
+    const clearResponseRecoveryTimer = () => {
+      if (responseRecoveryTimer) {
+        clearTimeout(responseRecoveryTimer);
+        responseRecoveryTimer = null;
+      }
+    };
+
+    const triggerAssistantResponse = (forceFallbackPrompt = false) => {
+      if (!openAiSocket || openAiSocket.readyState !== WebSocket.OPEN || responseInFlight || !introSent) {
+        return;
+      }
+
+      responseInFlight = true;
+      callerSpeechPending = false;
+      clearResponseRecoveryTimer();
+      openAiSocket.send(
+        JSON.stringify({
+          type: "response.create",
+          response: forceFallbackPrompt
+            ? {
+                output_modalities: ["audio"],
+                instructions:
+                  "The caller spoke but the transcript may be unclear. Politely say you did not catch that clearly and ask them to repeat it.",
+              }
+            : {
+                output_modalities: ["audio"],
+              },
+        }),
+      );
+    };
+
+    const scheduleResponseRecovery = () => {
+      clearResponseRecoveryTimer();
+
+      responseRecoveryTimer = setTimeout(() => {
+        if (callerSpeechPending && !responseInFlight) {
+          triggerAssistantResponse(true);
+        }
+      }, 1800);
     };
 
     const sendOpeningGreeting = () => {
@@ -1527,7 +1908,7 @@ export class TelephonyService {
           seenCallerTurns.add(cleaned);
           callerTurns.push(cleaned);
           transcriptLines.push(`Caller: ${cleaned}`);
-          await persistTranscript(buildRealtimeSummary(callerTurns));
+          await persistTranscript(buildRealtimeSummary(callerTurns, assistantTurns));
           return cleaned;
         };
 
@@ -1544,6 +1925,7 @@ export class TelephonyService {
 
         if (event.type === "error") {
           responseInFlight = false;
+          clearResponseRecoveryTimer();
           this.logger.error(
             `OpenAI realtime error for businessId=${activeBusinessId}: ${JSON.stringify(event)}`,
           );
@@ -1556,16 +1938,8 @@ export class TelephonyService {
         if (event.type === "conversation.item.input_audio_transcription.completed" && typeof event.transcript === "string") {
           const capturedTranscript = await appendCallerTranscript(event.transcript);
 
-          if (capturedTranscript && introSent && !responseInFlight) {
-            responseInFlight = true;
-            openAiSocket?.send(
-              JSON.stringify({
-                type: "response.create",
-                response: {
-                  output_modalities: ["audio"],
-                },
-              }),
-            );
+          if (capturedTranscript) {
+            triggerAssistantResponse();
           }
         }
 
@@ -1577,12 +1951,23 @@ export class TelephonyService {
             transcriptLines.push(`Assistant: ${latestAssistantTranscript}`);
           }
           await persistTranscript(
-            buildRealtimeSummary(callerTurns),
+            buildRealtimeSummary(callerTurns, assistantTurns),
           );
         }
 
         if (event.type === "response.done") {
           responseInFlight = false;
+          clearResponseRecoveryTimer();
+          callerSpeechPending = false;
+        }
+
+        if (event.type === "input_audio_buffer.speech_started") {
+          callerSpeechPending = true;
+        }
+
+        if (event.type === "input_audio_buffer.committed") {
+          callerSpeechPending = true;
+          scheduleResponseRecovery();
         }
 
         if (
@@ -1622,6 +2007,7 @@ export class TelephonyService {
     };
 
     const safeClose = () => {
+      clearResponseRecoveryTimer();
       this.logger.log(`Closing media bridge for businessId=${businessId || "unknown"}, streamSid=${streamSid || "unknown"}.`);
       if (twilioSocket.readyState === WebSocket.OPEN) {
         twilioSocket.close();

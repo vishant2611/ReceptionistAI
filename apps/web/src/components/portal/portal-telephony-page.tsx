@@ -13,6 +13,8 @@ type TelephonySettings = {
   provider?: string;
   connectionMode?: string;
   businessNumber?: string;
+  twilioAccountSid?: string;
+  twilioAuthToken?: string;
   twilioNumber?: string;
   fallbackNumber?: string;
   aiReceptionistEnabled?: boolean;
@@ -47,6 +49,8 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
     provider: telephony.provider || "TWILIO",
     connectionMode: telephony.connectionMode || "DIRECT_TO_AI",
     businessNumber: telephony.businessNumber || business.phoneNumber || "",
+    twilioAccountSid: telephony.twilioAccountSid || "",
+    twilioAuthToken: telephony.twilioAuthToken || "",
     twilioNumber: telephony.twilioNumber || "",
     fallbackNumber: telephony.fallbackNumber || business.phoneNumber || "",
     aiReceptionistEnabled: telephony.aiReceptionistEnabled ?? business.aiEnabled ?? true,
@@ -75,6 +79,8 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
       provider: String(formData.get("provider") ?? "TWILIO"),
       connectionMode: String(formData.get("connectionMode") ?? "DIRECT_TO_AI"),
       businessNumber: String(formData.get("businessNumber") ?? ""),
+      twilioAccountSid: String(formData.get("twilioAccountSid") ?? ""),
+      twilioAuthToken: String(formData.get("twilioAuthToken") ?? ""),
       twilioNumber: String(formData.get("twilioNumber") ?? ""),
       fallbackNumber: String(formData.get("fallbackNumber") ?? ""),
       aiReceptionistEnabled: formData.get("aiReceptionistEnabled") === "on",
@@ -127,6 +133,28 @@ export function PortalTelephonyPage({ businessId = "" }: Props) {
                   <div className="field">
                     <label htmlFor="business-number">Business phone number</label>
                     <input defaultValue={defaults.businessNumber} id="business-number" name="businessNumber" placeholder="+1 555-555-0123" type="text" />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="twilio-account-sid">Twilio Account SID</label>
+                    <input
+                      defaultValue={defaults.twilioAccountSid}
+                      id="twilio-account-sid"
+                      name="twilioAccountSid"
+                      placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      type="text"
+                    />
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="twilio-auth-token">Twilio Auth Token</label>
+                    <input
+                      defaultValue={defaults.twilioAuthToken}
+                      id="twilio-auth-token"
+                      name="twilioAuthToken"
+                      placeholder="Enter the Twilio auth token for this business"
+                      type="password"
+                    />
                   </div>
 
                   <div className="field">

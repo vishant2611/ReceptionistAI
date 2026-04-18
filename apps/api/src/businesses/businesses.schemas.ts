@@ -39,6 +39,8 @@ export const businessTelephonySettingsSchema = z.object({
   provider: z.enum(["TWILIO"]).default("TWILIO"),
   connectionMode: z.enum(["DIRECT_TO_AI", "AI_AFTER_MISSED_RINGS", "BUSINESS_HOURS_ONLY"]).default("DIRECT_TO_AI"),
   businessNumber: z.string().max(40).optional().default(""),
+  twilioAccountSid: z.string().min(10).max(64).optional().default(""),
+  twilioAuthToken: z.string().min(10).max(128).optional().default(""),
   twilioNumber: z.string().min(7).max(40),
   fallbackNumber: z.string().max(40).optional().default(""),
   aiReceptionistEnabled: z.boolean().default(true),

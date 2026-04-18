@@ -887,6 +887,8 @@ export class BusinessesService {
       provider: input.provider,
       connectionMode: input.connectionMode,
       businessNumber: input.businessNumber.trim(),
+      twilioAccountSid: input.twilioAccountSid.trim(),
+      twilioAuthToken: input.twilioAuthToken.trim(),
       twilioNumber: input.twilioNumber.trim(),
       fallbackNumber: input.fallbackNumber.trim(),
       aiReceptionistEnabled: input.aiReceptionistEnabled,
