@@ -964,6 +964,10 @@ function isFoodBusinessCategory(category: string) {
   return value.includes("restaurant") || value.includes("cafe") || value.includes("bakery");
 }
 
+function isPharmacyBusinessCategory(category: string) {
+  return normalizeText(category).includes("pharmacy");
+}
+
 @Injectable()
 export class TelephonyService {
   private readonly logger = new Logger(TelephonyService.name);
@@ -1179,6 +1183,7 @@ export class TelephonyService {
       typeof rules.primaryMode === "string" ? rules.primaryMode : "ALL_CALLS";
     const menuCatalog = extractMenuCatalog(rules);
     const foodBusiness = isFoodBusinessCategory(business.category);
+    const pharmacyBusiness = isPharmacyBusinessCategory(business.category);
     const consentMessage =
       typeof telephony.consentMessage === "string" && telephony.consentMessage.trim().length > 0
         ? telephony.consentMessage.trim()
@@ -1211,6 +1216,10 @@ export class TelephonyService {
       "When appropriate, guide the caller toward the best next action using only the saved business data.",
       "Answer quickly after the caller finishes, without long pauses.",
       "Keep your first response concise, then ask one focused follow-up question.",
+      "If the caller starts with a vague request like 'I want to...', 'hello', 'hi', or an incomplete sentence, respond with one neutral clarifying question instead of assuming a service type.",
+      "When intent is unclear, ask broad clarification questions like 'How can I help you today?' or 'What would you like to know or order today?' before narrowing down.",
+      "Do not assume the caller wants catering, reservations, booking, or ordering unless the caller clearly says so.",
+      "Do not switch the conversation into a different service flow just because the caller gives a short or unclear answer.",
       "Do not speak twice in a row unless the caller has clearly responded.",
       "Do not add filler like repeated thank-yous or extra closing lines unless the call is ending.",
       "Use professional sales language when appropriate, such as offering the next suitable option, helping the caller choose, or moving toward a booking, order, or callback.",
@@ -1218,6 +1227,14 @@ export class TelephonyService {
       "Do not switch languages unless the caller clearly asks for another language.",
       "Use only the information provided by the business configuration.",
       "Never invent operating hours, prices, or appointment availability.",
+      ...(pharmacyBusiness
+        ? [
+            "For pharmacy calls, if the caller starts vaguely or unclearly, ask a neutral clarifying question first.",
+            "For pharmacy calls, do not assume the caller is asking about a medication, refill, pickup, prescription, or product unless they clearly say so.",
+            "For pharmacy calls, broad clarifying questions like 'How can I help you today?' or 'Are you calling about store hours, a refill, pickup, or a pharmacist callback?' are preferred over guessing.",
+            "If the caller is asking about store hours, address, pickup status, or a callback, answer or route that directly instead of forcing a medication-details flow.",
+          ]
+        : []),
       "Never name a specific menu item, dish, soup, salad, dessert, or drink unless that exact item is present in the saved business summary, services summary, or pricing data.",
       "If structured menu items are present, prefer those exact items over broad summary text.",
       "Treat menu availability as a hard rule.",
@@ -1230,6 +1247,7 @@ export class TelephonyService {
       "Never ignore saved availability states in the structured menu.",
       "If the caller asks about menu categories like soups or salads and exact items are not stored, mention only the saved category or price range and say the exact item list is not loaded yet.",
       "For restaurant or bakery calls, treat the conversation as an order request unless the exact item list, quantities, fulfillment method, and contact details are explicitly confirmed by the caller.",
+      "For restaurant, cafe, and bakery calls, if the caller asks about hours, address, menu, pricing, or availability, answer that directly instead of forcing the conversation into an order flow.",
       "Do not claim that an order is fully confirmed unless those details are clearly collected.",
       "If the caller mentions an item that is not present in saved business data, say you can note the request for staff review instead of pretending it is available.",
       "Never repeat or summarize a caller name, quantity, phone number, pickup time, or order item unless the caller explicitly said it clearly in the conversation.",
@@ -1341,11 +1359,14 @@ export class TelephonyService {
     return `I heard your request and ${business.name} can review it. The live AI conversation engine is being expanded next, so this call can already use the portal information for basic guidance.`;
   }
 
-  private async findCallForTwilioEvent(businessId: string, payload: TwilioRecordingPayload) {
+  private async findCallForTwilioEvent(
+    payload: TwilioRecordingPayload,
+    businessId?: string,
+  ) {
     if (payload.CallSid) {
       const byCallSid = await this.prisma.call.findFirst({
         where: {
-          businessId,
+          ...(businessId ? { businessId } : {}),
           transcript: {
             contains: payload.CallSid,
             mode: "insensitive",
@@ -1363,7 +1384,7 @@ export class TelephonyService {
 
     const byCaller = await this.prisma.call.findFirst({
       where: {
-        businessId,
+        ...(businessId ? { businessId } : {}),
         callerNumber: payload.From?.trim() || undefined,
       },
       orderBy: {
@@ -1377,7 +1398,7 @@ export class TelephonyService {
 
     return this.prisma.call.findFirst({
       where: {
-        businessId,
+        ...(businessId ? { businessId } : {}),
       },
       orderBy: {
         createdAt: "desc",
@@ -1469,8 +1490,8 @@ export class TelephonyService {
     }
 
     if (callHandlingMode === "MESSAGE_CAPTURE") {
-      const recordAction = `${baseUrl}/api/telephony/twilio/voice/${businessId}/recording-complete`;
-      const transcribeCallback = `${baseUrl}/api/telephony/twilio/voice/${businessId}/transcription`;
+      const recordAction = `${baseUrl}/api/telephony/twilio/voice/recording-complete`;
+      const transcribeCallback = `${baseUrl}/api/telephony/twilio/voice/transcription`;
       const messagePrompt = [
         greeting,
         consentMessage,
@@ -1486,7 +1507,7 @@ export class TelephonyService {
     if (callHandlingMode === "LIVE_AI" || callHandlingMode === "HYBRID") {
       const wsBaseUrl = baseUrl.replace(/^http/i, "ws");
       const streamUrl = `${wsBaseUrl}/ws/twilio-media?businessId=${encodeURIComponent(businessId)}`;
-      const recordingCallbackUrl = `${baseUrl}/api/telephony/twilio/voice/${businessId}/recording-complete`;
+      const recordingCallbackUrl = `${baseUrl}/api/telephony/twilio/voice/recording-complete`;
       const recordingEnabled = telephony.recordingEnabled !== false;
       const recordingStart = recordingEnabled
         ? `<Start><Recording recordingStatusCallback="${escapeXml(recordingCallbackUrl)}" recordingStatusCallbackMethod="POST" recordingStatusCallbackEvent="completed" channels="dual" track="both" /></Start>`
@@ -1516,7 +1537,7 @@ export class TelephonyService {
     this.logger.log(
       `Twilio recording callback received for businessId=${businessId}, CallSid=${payload.CallSid || "unknown"}, RecordingUrl=${payload.RecordingUrl || "missing"}.`,
     );
-    const call = await this.findCallForTwilioEvent(businessId, payload);
+    const call = await this.findCallForTwilioEvent(payload, businessId);
 
     if (call) {
       const recordingSummary = payload.RecordingDuration
@@ -1543,8 +1564,21 @@ export class TelephonyService {
     return `<Response><Say voice="alice">Thank you. Your message has been recorded and will be reviewed by the team.</Say><Hangup/></Response>`;
   }
 
+  async handleRecordingCompleteByCall(payload: TwilioRecordingPayload) {
+    const call = await this.findCallForTwilioEvent(payload);
+
+    if (!call) {
+      this.logger.warn(
+        `Shared Twilio recording callback could not find a matching call for CallSid=${payload.CallSid || "unknown"}.`,
+      );
+      return `<Response><Say voice="alice">Thank you. Your message has been recorded and will be reviewed by the team.</Say><Hangup/></Response>`;
+    }
+
+    return this.handleRecordingComplete(call.businessId, payload);
+  }
+
   async handleTranscriptionCallback(businessId: string, payload: TwilioRecordingPayload) {
-    const call = await this.findCallForTwilioEvent(businessId, payload);
+    const call = await this.findCallForTwilioEvent(payload, businessId);
 
     if (call) {
       await this.prisma.call.update({
@@ -1561,6 +1595,19 @@ export class TelephonyService {
     }
 
     return { ok: true };
+  }
+
+  async handleTranscriptionCallbackByCall(payload: TwilioRecordingPayload) {
+    const call = await this.findCallForTwilioEvent(payload);
+
+    if (!call) {
+      this.logger.warn(
+        `Shared Twilio transcription callback could not find a matching call for CallSid=${payload.CallSid || "unknown"}.`,
+      );
+      return { ok: true };
+    }
+
+    return this.handleTranscriptionCallback(call.businessId, payload);
   }
 
   private async syncPharmacyWorkflowsFromCall(callId: string) {
@@ -1717,10 +1764,10 @@ export class TelephonyService {
       ? this.buildBusinessAwareReply(business, rules, callerSpeech)
       : "I did not catch that clearly. Please try calling again, and we will continue improving the live AI assistant.";
 
-    const call = await this.findCallForTwilioEvent(businessId, {
+    const call = await this.findCallForTwilioEvent({
       CallSid: payload.CallSid,
       From: payload.From,
-    });
+    }, businessId);
 
     if (call) {
       const priorTranscript = call.transcript || "";
@@ -1826,7 +1873,7 @@ export class TelephonyService {
             ? {
                 output_modalities: ["audio"],
                 instructions:
-                  "The caller spoke but the transcript may be unclear. Politely say you did not catch that clearly and ask them to repeat it.",
+                  "Speak only in English. The caller spoke but the transcript may be unclear. Politely say you did not catch that clearly and ask them to repeat it in one short sentence.",
               }
             : {
                 output_modalities: ["audio"],

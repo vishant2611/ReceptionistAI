@@ -36,12 +36,27 @@ export class TelephonyController {
     return this.telephonyService.handleRecordingComplete(businessId, body);
   }
 
+  @All("twilio/voice/recording-complete")
+  @Header("Content-Type", "text/xml")
+  async handleSharedRecordingComplete(
+    @Body() body: Record<string, string | undefined>,
+  ) {
+    return this.telephonyService.handleRecordingCompleteByCall(body);
+  }
+
   @All("twilio/voice/:businessId/transcription")
   async handleTranscription(
     @Param("businessId") businessId: string,
     @Body() body: Record<string, string | undefined>,
   ) {
     return this.telephonyService.handleTranscriptionCallback(businessId, body);
+  }
+
+  @All("twilio/voice/transcription")
+  async handleSharedTranscription(
+    @Body() body: Record<string, string | undefined>,
+  ) {
+    return this.telephonyService.handleTranscriptionCallbackByCall(body);
   }
 
   @All("twilio/voice/:businessId/live-ai-turn")
