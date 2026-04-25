@@ -71,7 +71,7 @@ export function DashboardClient({ businessId = "" }: DashboardClientProps) {
     const activeSession = getSession();
     setSession(activeSession);
 
-    const activeBusinessId = businessId || activeSession?.business.id;
+    const activeBusinessId = businessId || activeSession?.business?.id;
     if (!activeBusinessId) {
       setError("No business session found. Please sign in first.");
       setLoading(false);
@@ -106,7 +106,7 @@ export function DashboardClient({ businessId = "" }: DashboardClientProps) {
     ];
   }, [data]);
 
-  const activeRole = session?.business.role ?? "STAFF";
+  const activeRole = session?.business?.role ?? "STAFF";
   const canManageTeam = activeRole === "BUSINESS_OWNER";
   const canViewBilling = activeRole === "BUSINESS_OWNER" || activeRole === "BILLING_ADMIN";
   const canEditConfiguration = activeRole === "BUSINESS_OWNER" || activeRole === "MANAGER";
@@ -265,7 +265,7 @@ export function DashboardClient({ businessId = "" }: DashboardClientProps) {
           </div>
           <div className="detail-row">
             <span>Business</span>
-            <strong>{session?.business.name || data.business.name}</strong>
+            <strong>{session?.business?.name || data.business.name}</strong>
           </div>
         </div>
       </section>

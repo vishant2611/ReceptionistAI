@@ -56,6 +56,16 @@ export const businessTelephonySettingsSchema = z.object({
 
 export type BusinessTelephonySettingsInput = z.infer<typeof businessTelephonySettingsSchema>;
 
+export const businessBillingSettingsSchema = z.object({
+  planName: z.string().min(2).max(80),
+  billingCycle: z.enum(["Monthly", "Yearly"]).default("Monthly"),
+  status: z.enum(["TRIAL", "ACTIVE", "PAUSED", "PAST_DUE", "CANCELED"]).default("TRIAL"),
+  includedMinutesPerMonth: z.coerce.number().int().min(0).max(100000).default(100),
+  overageRatePerMinute: z.coerce.number().min(0).max(1000).default(0.5),
+});
+
+export type BusinessBillingSettingsInput = z.infer<typeof businessBillingSettingsSchema>;
+
 export const businessProfileUpdateSchema = z.object({
   businessName: z.string().min(2),
   phoneNumber: z.string().min(7),

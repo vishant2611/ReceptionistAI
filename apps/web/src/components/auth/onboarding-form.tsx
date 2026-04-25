@@ -58,7 +58,7 @@ export function OnboardingForm({ businessId = "" }: OnboardingFormProps) {
     billingCycle: "Monthly",
   });
 
-  const activeBusinessId = businessId || getSession()?.business.id || "";
+  const activeBusinessId = businessId || getSession()?.business?.id || "";
 
   useEffect(() => {
     if (!activeBusinessId) {

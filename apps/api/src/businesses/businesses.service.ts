@@ -5,6 +5,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BusinessMemberCreateInput } from "./business-members.schemas";
 import {
   BusinessAiSettingsInput,
+  BusinessBillingSettingsInput,
   BusinessMenuImportInput,
   BusinessMenuUpdateInput,
   BusinessOnboardingInput,
@@ -22,6 +23,44 @@ const medicalCategories = new Set<BusinessCategory>([
   BusinessCategory.PHYSIOTHERAPY,
   BusinessCategory.VETERINARY,
 ]);
+
+function isMedicalBusinessCategory(category: string | BusinessCategory | null | undefined) {
+  return medicalCategories.has(String(category ?? "").trim().toUpperCase() as BusinessCategory);
+}
+
+function resolveMedicalMode(business: { category: string | BusinessCategory; medicalModeEnabled: boolean }) {
+  return business.medicalModeEnabled || isMedicalBusinessCategory(business.category);
+}
+
+function resolveOnboardingCompleted(
+  business: {
+    onboardingCompleted: boolean;
+    name?: string | null;
+    category?: string | BusinessCategory | null;
+    phoneNumber?: string | null;
+    address?: string | null;
+    timezone?: string | null;
+    description?: string | null;
+    servicesSummary?: string | null;
+  },
+) {
+  if (business.onboardingCompleted) {
+    return true;
+  }
+
+  const hasCoreIdentity =
+    String(business.name ?? "").trim().length >= 2 &&
+    String(business.category ?? "").trim().length >= 2 &&
+    String(business.phoneNumber ?? "").trim().length >= 7 &&
+    String(business.address ?? "").trim().length >= 4 &&
+    String(business.timezone ?? "").trim().length >= 3;
+
+  const hasBusinessContext =
+    String(business.description ?? "").trim().length >= 10 ||
+    String(business.servicesSummary ?? "").trim().length >= 10;
+
+  return hasCoreIdentity && hasBusinessContext;
+}
 
 function normalizeCategory(industryType: string): BusinessCategory {
   const value = industryType.trim().toUpperCase().replace(/[\s/-]+/g, "_");
@@ -99,6 +138,107 @@ function extractMenuSource(value: unknown) {
     filename: String((source as Record<string, unknown>).filename ?? "").trim(),
     mimeType: String((source as Record<string, unknown>).mimeType ?? "").trim(),
     importedAt: String((source as Record<string, unknown>).importedAt ?? "").trim(),
+  };
+}
+
+type BillingPreset = {
+  includedMinutesPerMonth: number;
+  overageRatePerMinute: number;
+  status: "TRIAL" | "ACTIVE";
+};
+
+const BILLING_PLAN_PRESETS: Record<string, BillingPreset> = {
+  FREE_TRIAL: {
+    includedMinutesPerMonth: 100,
+    overageRatePerMinute: 0.5,
+    status: "TRIAL",
+  },
+  STARTER: {
+    includedMinutesPerMonth: 300,
+    overageRatePerMinute: 0.35,
+    status: "ACTIVE",
+  },
+  GROWTH: {
+    includedMinutesPerMonth: 750,
+    overageRatePerMinute: 0.3,
+    status: "ACTIVE",
+  },
+  PRO: {
+    includedMinutesPerMonth: 1500,
+    overageRatePerMinute: 0.25,
+    status: "ACTIVE",
+  },
+};
+
+function normalizePlanKey(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s/-]+/g, "_");
+}
+
+function roundBillingMinutes(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function roundCurrency(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function addMonthsAnchored(base: Date, monthsToAdd: number, anchorDay: number) {
+  const next = new Date(base);
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + monthsToAdd);
+  const daysInTargetMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
+  next.setUTCDate(Math.min(anchorDay, daysInTargetMonth));
+  return next;
+}
+
+function addYearsAnchored(base: Date, yearsToAdd: number, anchorMonth: number, anchorDay: number) {
+  const next = new Date(Date.UTC(base.getUTCFullYear() + yearsToAdd, anchorMonth, 1));
+  const daysInTargetMonth = new Date(Date.UTC(next.getUTCFullYear(), anchorMonth + 1, 0)).getUTCDate();
+  next.setUTCDate(Math.min(anchorDay, daysInTargetMonth));
+  return next;
+}
+
+function calculateBillingWindow(anchorDate: Date, billingCycle: string | null | undefined, now = new Date()) {
+  const cycleKey = String(billingCycle ?? "Monthly").trim().toUpperCase();
+  const anchorDay = anchorDate.getUTCDate();
+  const anchorMonth = anchorDate.getUTCMonth();
+  let cycleStart = new Date(anchorDate);
+  let cycleEnd =
+    cycleKey === "YEARLY" || cycleKey === "ANNUAL"
+      ? addYearsAnchored(cycleStart, 1, anchorMonth, anchorDay)
+      : addMonthsAnchored(cycleStart, 1, anchorDay);
+
+  while (cycleEnd <= now) {
+    cycleStart = cycleEnd;
+    cycleEnd =
+      cycleKey === "YEARLY" || cycleKey === "ANNUAL"
+        ? addYearsAnchored(cycleStart, 1, anchorMonth, anchorDay)
+        : addMonthsAnchored(cycleStart, 1, anchorDay);
+  }
+
+  return {
+    cycleStart,
+    cycleEnd,
+  };
+}
+
+function extractBillingSettings(value: unknown) {
+  const rules = readBusinessRules(value);
+  const billing = rules.billing;
+
+  if (!billing || typeof billing !== "object" || Array.isArray(billing)) {
+    return {};
+  }
+
+  const record = billing as Record<string, unknown>;
+
+  return {
+    includedMinutesPerMonth: Number(record.includedMinutesPerMonth ?? 0),
+    overageRatePerMinute: Number(record.overageRatePerMinute ?? 0),
+    status: String(record.status ?? "").trim(),
   };
 }
 
@@ -493,6 +633,83 @@ function extractResponseText(value: unknown): string {
 export class BusinessesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async calculateBillingOverview(business: {
+    id: string;
+    selectedPlan: string | null;
+    billingCycle: string | null;
+    answeringRules: unknown;
+    createdAt: Date;
+  }) {
+    const planName = business.selectedPlan?.trim() || "Free Trial";
+    const billingCycle = business.billingCycle?.trim() || "Monthly";
+    const planKey = normalizePlanKey(planName);
+    const preset = BILLING_PLAN_PRESETS[planKey] ?? BILLING_PLAN_PRESETS.FREE_TRIAL;
+    const savedBilling = extractBillingSettings(business.answeringRules);
+    const includedMinutes =
+      typeof savedBilling.includedMinutesPerMonth === "number" &&
+      Number.isFinite(savedBilling.includedMinutesPerMonth) &&
+      savedBilling.includedMinutesPerMonth > 0
+        ? savedBilling.includedMinutesPerMonth
+        : preset.includedMinutesPerMonth;
+    const overageRate =
+      typeof savedBilling.overageRatePerMinute === "number" &&
+      Number.isFinite(savedBilling.overageRatePerMinute) &&
+      savedBilling.overageRatePerMinute > 0
+        ? savedBilling.overageRatePerMinute
+        : preset.overageRatePerMinute;
+    const status =
+      savedBilling.status === "ACTIVE" ||
+      savedBilling.status === "PAUSED" ||
+      savedBilling.status === "PAST_DUE" ||
+      savedBilling.status === "CANCELED" ||
+      savedBilling.status === "TRIAL"
+        ? savedBilling.status
+        : preset.status;
+    const { cycleStart, cycleEnd } = calculateBillingWindow(business.createdAt, billingCycle);
+
+    const calls = await this.prisma.call.findMany({
+      where: {
+        businessId: business.id,
+        endedAt: {
+          gte: cycleStart,
+          lt: cycleEnd,
+        },
+      },
+      select: {
+        startedAt: true,
+        endedAt: true,
+      },
+    });
+
+    const usedMinutesRaw = calls.reduce((total, call) => {
+      if (!call.endedAt) {
+        return total;
+      }
+
+      const durationMs = Math.max(0, call.endedAt.getTime() - call.startedAt.getTime());
+      return total + durationMs / 60000;
+    }, 0);
+
+    const usedMinutes = roundBillingMinutes(usedMinutesRaw);
+    const remainingMinutes = roundBillingMinutes(Math.max(0, includedMinutes - usedMinutes));
+    const overageMinutes = roundBillingMinutes(Math.max(0, usedMinutes - includedMinutes));
+    const estimatedOverageCharge = roundCurrency(overageMinutes * overageRate);
+
+    return {
+      planName,
+      billingCycle,
+      status,
+      cycleStart: cycleStart.toISOString(),
+      cycleEnd: cycleEnd.toISOString(),
+      includedMinutes,
+      usedMinutes,
+      remainingMinutes,
+      overageMinutes,
+      overageRatePerMinute: overageRate,
+      estimatedOverageCharge,
+    };
+  }
+
   private assertPharmacyBusiness(category: BusinessCategory) {
     if (category !== BusinessCategory.PHARMACY) {
       throw new BadRequestException("This pharmacy workflow is only available for pharmacy businesses.");
@@ -565,6 +782,8 @@ export class BusinessesService {
       throw new NotFoundException("Business not found.");
     }
 
+    const billingOverview = await this.calculateBillingOverview(business);
+
     return {
       business: {
         id: business.id,
@@ -582,8 +801,8 @@ export class BusinessesService {
         voicePreference: business.voicePreference,
         selectedPlan: business.selectedPlan,
         billingCycle: business.billingCycle,
-        onboardingCompleted: business.onboardingCompleted,
-        medicalModeEnabled: business.medicalModeEnabled,
+        onboardingCompleted: resolveOnboardingCompleted(business),
+        medicalModeEnabled: resolveMedicalMode(business),
         aiEnabled: business.aiEnabled,
         timezone: business.timezone,
         telephonySettings: readBusinessRules(business.answeringRules).telephony ?? null,
@@ -591,7 +810,72 @@ export class BusinessesService {
         menuSource: extractMenuSource(business.answeringRules),
         pharmacyRefillRequests: extractPharmacyRefillRequests(business.answeringRules),
         pharmacyCallbackRequests: extractPharmacyCallbackRequests(business.answeringRules),
+        billingOverview,
       },
+    };
+  }
+
+  async listAdminBusinesses() {
+    const businesses = await this.prisma.business.findMany({
+      include: {
+        members: {
+          include: {
+            user: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const items = await Promise.all(
+      businesses.map(async (business) => {
+        const ownerMembership =
+          business.members.find((membership) => membership.role === UserRole.BUSINESS_OWNER) || business.members[0] || null;
+        const billingOverview = await this.calculateBillingOverview(business);
+        const telephony = readBusinessRules(business.answeringRules).telephony;
+        const telephonySettings =
+          telephony && typeof telephony === "object" && !Array.isArray(telephony)
+            ? (telephony as Record<string, unknown>)
+            : {};
+
+        return {
+          id: business.id,
+          name: business.name,
+          category: business.category,
+          businessEmail: business.email || "",
+          ownerEmail: ownerMembership?.user.email || business.email || "",
+          ownerName: ownerMembership?.user.fullName || business.name,
+          phoneNumber: business.phoneNumber || "",
+          address: business.address || "",
+          timezone: business.timezone,
+          twilioNumber: String(telephonySettings.twilioNumber ?? "").trim(),
+          selectedPlan: business.selectedPlan || billingOverview.planName,
+          billingCycle: business.billingCycle || billingOverview.billingCycle,
+          billingStatus: billingOverview.status,
+          includedMinutes: billingOverview.includedMinutes,
+          usedMinutes: billingOverview.usedMinutes,
+          overageMinutes: billingOverview.overageMinutes,
+          overageRatePerMinute: billingOverview.overageRatePerMinute,
+          remainingMinutes: billingOverview.remainingMinutes,
+          aiEnabled: business.aiEnabled,
+          medicalModeEnabled: resolveMedicalMode(business),
+          onboardingCompleted: resolveOnboardingCompleted(business),
+          memberCount: business.members.length,
+          members: business.members.map((membership) => ({
+            id: membership.user.id,
+            email: membership.user.email,
+            fullName: membership.user.fullName || "",
+            role: membership.role,
+          })),
+          createdAt: business.createdAt.toISOString(),
+        };
+      }),
+    );
+
+    return {
+      businesses: items,
     };
   }
 
@@ -837,7 +1121,8 @@ export class BusinessesService {
     const previousOfficeHours = Array.isArray(existing.officeHours) ? existing.officeHours : [];
 
     const emergencyMessage =
-      input.emergencyMessage.trim() || (existing.medicalModeEnabled ? "If this is a medical emergency, please call 911." : "");
+      input.emergencyMessage.trim() ||
+      (resolveMedicalMode(existing) ? "If this is a medical emergency, please call 911." : "");
 
     const business = await this.prisma.business.update({
       where: { id: businessId },
@@ -868,7 +1153,7 @@ export class BusinessesService {
         greetingMessage: business.greetingMessage,
         voicePreference: business.voicePreference,
         answeringRules: business.answeringRules,
-        medicalModeEnabled: business.medicalModeEnabled,
+        medicalModeEnabled: resolveMedicalMode(business),
       },
     };
   }
@@ -929,6 +1214,51 @@ export class BusinessesService {
       business: {
         id: business.id,
         telephonySettings: readBusinessRules(business.answeringRules).telephony ?? null,
+      },
+    };
+  }
+
+  async updateBillingSettings(businessId: string, input: BusinessBillingSettingsInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    const previousRules = readBusinessRules(existing.answeringRules);
+    const previousBilling =
+      previousRules.billing && typeof previousRules.billing === "object" && !Array.isArray(previousRules.billing)
+        ? (previousRules.billing as Record<string, unknown>)
+        : {};
+
+    const business = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        selectedPlan: input.planName.trim(),
+        billingCycle: input.billingCycle,
+        answeringRules: {
+          ...previousRules,
+          billing: {
+            ...previousBilling,
+            planName: input.planName.trim(),
+            status: input.status,
+            includedMinutesPerMonth: input.includedMinutesPerMonth,
+            overageRatePerMinute: input.overageRatePerMinute,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    return {
+      message: "Billing settings updated successfully.",
+      business: {
+        id: business.id,
+        selectedPlan: business.selectedPlan,
+        billingCycle: business.billingCycle,
+        billingOverview: await this.calculateBillingOverview(business),
       },
     };
   }
@@ -1341,8 +1671,8 @@ export class BusinessesService {
       business: {
         id: business.id,
         name: business.name,
-        onboardingCompleted: business.onboardingCompleted,
-        medicalModeEnabled: business.medicalModeEnabled,
+        onboardingCompleted: resolveOnboardingCompleted(business),
+        medicalModeEnabled: resolveMedicalMode(business),
       },
     };
   }

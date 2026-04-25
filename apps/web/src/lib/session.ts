@@ -7,9 +7,15 @@ export type BusinessSession = {
   onboardingCompleted: boolean;
 };
 
+export type AdminSession = {
+  email: string;
+  role: string;
+};
+
 export type AuthSession = {
   email: string;
-  business: BusinessSession;
+  business?: BusinessSession;
+  admin?: AdminSession;
 };
 
 export function saveSession(session: AuthSession) {

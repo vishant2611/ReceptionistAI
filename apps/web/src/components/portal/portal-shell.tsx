@@ -14,7 +14,7 @@ type PortalShellProps = {
 };
 
 export function PortalShell({ active, title, subtitle, portal, children }: PortalShellProps) {
-  const businessId = portal.business?.id ?? portal.session?.business.id ?? "";
+  const businessId = portal.business?.id ?? portal.session?.business?.id ?? "";
   const roleLabel = portal.role.replaceAll("_", " ");
   const navItems = [
     { key: "dashboard", label: "Dashboard", icon: "D", href: `/portal/dashboard?businessId=${businessId}`, visible: true },
@@ -72,7 +72,7 @@ export function PortalShell({ active, title, subtitle, portal, children }: Porta
           <div className="portal-brand">
             <span className="brand-seal">RA</span>
             <div className="portal-brand-copy">
-              <strong>{portal.business?.name || portal.session?.business.name || "Receptionist AI"}</strong>
+              <strong>{portal.business?.name || portal.session?.business?.name || portal.session?.admin?.email || "Receptionist AI"}</strong>
               <span>{roleLabel}</span>
             </div>
           </div>
@@ -115,7 +115,7 @@ export function PortalShell({ active, title, subtitle, portal, children }: Porta
             <div className="portal-topbar-copy">
               <span className="eyebrow">Business portal</span>
               <div className="portal-meta-row">
-                <span>{portal.business?.name || portal.session?.business.name || "Receptionist AI"}</span>
+                <span>{portal.business?.name || portal.session?.business?.name || portal.session?.admin?.email || "Receptionist AI"}</span>
                 <span>{roleLabel}</span>
               </div>
               <h1 className="portal-title">{title}</h1>

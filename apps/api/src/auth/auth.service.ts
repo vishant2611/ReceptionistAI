@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/
 import { BusinessCategory, SubscriptionStatus, UserRole } from "@prisma/client";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
-import { SignInInput, SignUpInput } from "./auth.schemas";
+import { AdminResetPasswordInput, ChangePasswordInput, SignInInput, SignUpInput } from "./auth.schemas";
 
 const medicalCategories = new Set<BusinessCategory>([
   BusinessCategory.CLINIC,
@@ -13,9 +13,42 @@ const medicalCategories = new Set<BusinessCategory>([
   BusinessCategory.VETERINARY,
 ]);
 
+const DEFAULT_ADMIN_EMAIL = "aryan.bhatia26@gmail.com";
+const DEFAULT_ADMIN_PASSWORD = "vishant12345";
+
 function normalizeCategory(industryType: string): BusinessCategory {
   const value = industryType.trim().toUpperCase().replace(/[\s/-]+/g, "_");
   return BusinessCategory[value as keyof typeof BusinessCategory] ?? BusinessCategory.OTHER;
+}
+
+function resolveOnboardingCompleted(
+  business: {
+    onboardingCompleted: boolean;
+    name?: string | null;
+    category?: string | BusinessCategory | null;
+    phoneNumber?: string | null;
+    address?: string | null;
+    timezone?: string | null;
+    description?: string | null;
+    servicesSummary?: string | null;
+  },
+) {
+  if (business.onboardingCompleted) {
+    return true;
+  }
+
+  const hasCoreIdentity =
+    String(business.name ?? "").trim().length >= 2 &&
+    String(business.category ?? "").trim().length >= 2 &&
+    String(business.phoneNumber ?? "").trim().length >= 7 &&
+    String(business.address ?? "").trim().length >= 4 &&
+    String(business.timezone ?? "").trim().length >= 3;
+
+  const hasBusinessContext =
+    String(business.description ?? "").trim().length >= 10 ||
+    String(business.servicesSummary ?? "").trim().length >= 10;
+
+  return hasCoreIdentity && hasBusinessContext;
 }
 
 function hashPassword(password: string) {
@@ -43,6 +76,26 @@ function verifyPassword(password: string, passwordHash: string) {
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async ensureDefaultAdminUser() {
+    const email = DEFAULT_ADMIN_EMAIL.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.user.create({
+      data: {
+        email,
+        fullName: "Aryan Bhatia",
+        passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD),
+        role: UserRole.SUPER_ADMIN,
+      },
+    });
+  }
 
   async signUp(input: SignUpInput) {
     try {
@@ -115,6 +168,8 @@ export class AuthService {
   }
 
   async signIn(input: SignInInput) {
+    await this.ensureDefaultAdminUser();
+
     const identity = input.identity.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({
       where: { email: identity },
@@ -131,6 +186,24 @@ export class AuthService {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
+    if (
+      user.role === UserRole.SUPER_ADMIN ||
+      user.role === UserRole.SUPPORT_ADMIN ||
+      user.role === UserRole.OPERATIONS_ADMIN
+    ) {
+      return {
+        message: "Signed in successfully.",
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        },
+        isAdmin: true,
+        adminRole: user.role,
+        businesses: [],
+      };
+    }
+
     return {
       message: "Signed in successfully.",
       user: {
@@ -143,8 +216,52 @@ export class AuthService {
         name: membership.business.name,
         category: membership.business.category,
         role: membership.role,
-        onboardingCompleted: membership.business.onboardingCompleted,
+        onboardingCompleted: resolveOnboardingCompleted(membership.business),
       })),
+    };
+  }
+
+  async changePassword(input: ChangePasswordInput) {
+    const email = input.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user?.passwordHash || !verifyPassword(input.currentPassword, user.passwordHash)) {
+      throw new UnauthorizedException("Current password is incorrect.");
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: hashPassword(input.newPassword),
+      },
+    });
+
+    return {
+      message: "Password updated successfully.",
+    };
+  }
+
+  async adminResetPassword(input: AdminResetPasswordInput) {
+    const email = input.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new BadRequestException("User not found.");
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: hashPassword(input.newPassword),
+      },
+    });
+
+    return {
+      message: "Password reset successfully.",
     };
   }
 }

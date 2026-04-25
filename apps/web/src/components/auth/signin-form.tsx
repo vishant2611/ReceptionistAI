@@ -7,6 +7,8 @@ import { saveSession } from "../../lib/session";
 
 type SignInResponse = {
   message: string;
+  isAdmin?: boolean;
+  adminRole?: string;
   businesses: Array<{
     id: string;
     name: string;
@@ -38,6 +40,20 @@ export function SigninForm() {
         method: "POST",
         body: payload,
       });
+
+      if (response.isAdmin) {
+        saveSession({
+          email: payload.identity,
+          admin: {
+            email: payload.identity,
+            role: response.adminRole || "SUPER_ADMIN",
+          },
+        });
+
+        setSuccess(response.message);
+        router.push("/admin");
+        return;
+      }
 
       const firstBusiness = response.businesses[0];
 

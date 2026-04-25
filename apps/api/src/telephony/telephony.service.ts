@@ -968,6 +968,15 @@ function isPharmacyBusinessCategory(category: string) {
   return normalizeText(category).includes("pharmacy");
 }
 
+function isMedicalBusinessCategory(category: string | null | undefined) {
+  const normalized = String(category ?? "").trim().toUpperCase();
+  return ["CLINIC", "DOCTOR", "DENTAL", "PHARMACY", "PHYSIOTHERAPY", "VETERINARY"].includes(normalized);
+}
+
+function resolveMedicalMode(business: { category: string; medicalModeEnabled: boolean }) {
+  return business.medicalModeEnabled || isMedicalBusinessCategory(business.category);
+}
+
 @Injectable()
 export class TelephonyService {
   private readonly logger = new Logger(TelephonyService.name);
@@ -1158,6 +1167,7 @@ export class TelephonyService {
     },
     rules: Record<string, unknown>,
   ) {
+    const medicalModeEnabled = resolveMedicalMode(business);
     const telephony =
       rules.telephony && typeof rules.telephony === "object" && !Array.isArray(rules.telephony)
         ? (rules.telephony as Record<string, unknown>)
@@ -1170,7 +1180,7 @@ export class TelephonyService {
     const emergencyMessage =
       typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
         ? rules.emergencyMessage.trim()
-        : business.medicalModeEnabled
+        : medicalModeEnabled
           ? "If this is a medical emergency, please call 911."
           : "No emergency instruction is required for this business category.";
     const afterHoursMessage =
@@ -1213,6 +1223,7 @@ export class TelephonyService {
       "Your tone should be calm, confident, warm, and conversion-focused.",
       "Your goal is to convert interest into a clear next step such as an order request, booking request, callback request, or confirmed follow-up.",
       "Be helpful and persuasive, but never pushy, robotic, or misleading.",
+      "When the business is food-related, think like a strong counter-sales person: help the caller choose, move the order forward confidently, and keep the conversation commercially useful.",
       "When appropriate, guide the caller toward the best next action using only the saved business data.",
       "Answer quickly after the caller finishes, without long pauses.",
       "Keep your first response concise, then ask one focused follow-up question.",
@@ -1237,6 +1248,9 @@ export class TelephonyService {
         : []),
       "Never name a specific menu item, dish, soup, salad, dessert, or drink unless that exact item is present in the saved business summary, services summary, or pricing data.",
       "If structured menu items are present, prefer those exact items over broad summary text.",
+      "If a caller asks what is available in a category, present the saved options clearly and briefly in a sales-friendly way.",
+      "If a caller chooses an item, you may ask one useful follow-up sales question such as quantity, pickup time, or whether they want another saved item, but do not be pushy.",
+      "Only upsell using saved available items. Never invent combos, discounts, or extra items.",
       "Treat menu availability as a hard rule.",
       "If a structured menu item is marked available now, you may treat it as currently available.",
       "If a structured menu item is marked unavailable today, do not offer it as available.",
@@ -1253,11 +1267,21 @@ export class TelephonyService {
       "Never repeat or summarize a caller name, quantity, phone number, pickup time, or order item unless the caller explicitly said it clearly in the conversation.",
       "If a caller gives only partial order details, explicitly ask for the missing fields instead of guessing.",
       "If you are uncertain about a name, phone number, quantity, or item, say that you did not catch it clearly and ask the caller to repeat it.",
+      "Never invent or substitute a customer name from a weak transcript, acknowledgement, filler word, or phonetic guess.",
+      "Words like 'alright', 'okay', 'good', 'yeah', or similar acknowledgements are never customer names.",
+      "If the caller's name is unclear after a retry, say the order can stay pending without the name and ask whether they want to continue with phone number only.",
+      "If the caller does not clearly confirm a detail, do not include that detail in your final recap.",
+      "Keep final recaps factual and minimal. Do not add extra conversational closings, repeated thanks, or additional farewell lines after the order summary.",
       ...(foodBusiness
         ? [
             "For restaurant, cafe, and bakery pickup or delivery orders, do not end the order flow until you have captured the exact item, quantity, fulfillment method, pickup or delivery timing, customer name, and customer phone number.",
             "If phone number is missing, you must ask for it before closing the order.",
             "If the caller refuses or does not provide a phone number, clearly state that the order request is incomplete without a callback number and ask once more before ending the call.",
+            "If the caller's name remains unclear, do not replace it with a guessed name. Keep the order pending and explicitly say the name still needs confirmation from staff or the caller.",
+            "For restaurant calls, never turn an uncertain transcript into a confirmed customer identity.",
+            "If exact saved pricing and quantity are both known, calculate and say the subtotal clearly before ending the call, for example 'Your total is $16 before tax.'",
+            "If exact saved pricing is missing or uncertain, do not invent the total. Instead say the team will confirm the final total.",
+            "Before ending a restaurant order call, give one concise recap with item, quantity, fulfillment timing, and total if confidently known.",
           ]
         : []),
       "When discussing dates or weekdays, rely on the current local business date provided above.",
@@ -1288,15 +1312,16 @@ export class TelephonyService {
     callerSpeech: string,
   ) {
     const speech = normalizeText(callerSpeech);
+    const medicalModeEnabled = resolveMedicalMode(business);
     const emergencyMessage =
       typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
         ? rules.emergencyMessage.trim()
-        : business.medicalModeEnabled
+        : medicalModeEnabled
           ? "If this is a medical emergency, please call 911."
           : "";
 
     if (
-      business.medicalModeEnabled &&
+      medicalModeEnabled &&
       ["emergency", "urgent", "chest pain", "bleeding", "unconscious", "911"].some((keyword) => speech.includes(keyword))
     ) {
       return emergencyMessage || "If this is a medical emergency, please call 911.";
@@ -1449,7 +1474,7 @@ export class TelephonyService {
     const emergencyMessage =
       typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
         ? rules.emergencyMessage.trim()
-        : business.medicalModeEnabled
+        : resolveMedicalMode(business)
           ? "If this is a medical emergency, please call 911."
           : "";
 
@@ -1936,7 +1961,7 @@ export class TelephonyService {
       activeEmergencyPrompt =
         typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
           ? rules.emergencyMessage.trim()
-          : business.medicalModeEnabled
+          : resolveMedicalMode(business)
             ? "If this is a medical emergency, please call 911 immediately."
             : "";
       const apiKey = process.env.OPENAI_API_KEY;

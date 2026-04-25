@@ -19,6 +19,19 @@ type BusinessData = {
     voicePreference?: string | null;
     selectedPlan?: string | null;
     billingCycle?: string | null;
+    billingOverview?: {
+      planName: string;
+      billingCycle: string;
+      status: string;
+      cycleStart: string;
+      cycleEnd: string;
+      includedMinutes: number;
+      usedMinutes: number;
+      remainingMinutes: number;
+      overageMinutes: number;
+      overageRatePerMinute: number;
+      estimatedOverageCharge: number;
+    };
     onboardingCompleted: boolean;
     medicalModeEnabled: boolean;
     aiEnabled: boolean;
@@ -126,17 +139,17 @@ export function usePortalData(businessId = ""): PortalData {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const activeRole = session?.business.role ?? "STAFF";
+  const activeRole = session?.business?.role ?? "STAFF";
 
   async function refreshBusiness() {
-    const activeBusinessId = businessId || getSession()?.business.id;
+    const activeBusinessId = businessId || getSession()?.business?.id;
     if (!activeBusinessId) return;
     const businessResponse = await apiRequest<BusinessData>(`/api/businesses/${activeBusinessId}`);
     setBusiness(businessResponse.business);
   }
 
   async function refreshMembers() {
-    const activeBusinessId = businessId || getSession()?.business.id;
+    const activeBusinessId = businessId || getSession()?.business?.id;
     if (!activeBusinessId) return;
     const membersResponse = await apiRequest<MembersResponse>(`/api/businesses/${activeBusinessId}/members`);
     setMembers(membersResponse.members);
@@ -146,7 +159,7 @@ export function usePortalData(businessId = ""): PortalData {
     const activeSession = getSession();
     setSession(activeSession);
 
-    const activeBusinessId = businessId || activeSession?.business.id;
+    const activeBusinessId = businessId || activeSession?.business?.id;
     if (!activeBusinessId) {
       setError("No business session found. Please sign in first.");
       setLoading(false);

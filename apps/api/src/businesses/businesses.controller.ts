@@ -3,6 +3,7 @@ import { businessMemberCreateSchema } from "./business-members.schemas";
 import { BusinessesService } from "./businesses.service";
 import {
   businessAiSettingsSchema,
+  businessBillingSettingsSchema,
   businessMenuImportSchema,
   businessMenuUpdateSchema,
   businessOnboardingSchema,
@@ -15,6 +16,11 @@ import {
 @Controller("businesses")
 export class BusinessesController {
   constructor(private readonly businessesService: BusinessesService) {}
+
+  @Get("admin/overview")
+  async listAdminBusinesses() {
+    return this.businessesService.listAdminBusinesses();
+  }
 
   @Get(":businessId")
   async getBusiness(@Param("businessId") businessId: string) {
@@ -71,6 +77,12 @@ export class BusinessesController {
   async updateTelephonySettings(@Param("businessId") businessId: string, @Body() body: unknown) {
     const input = businessTelephonySettingsSchema.parse(body);
     return this.businessesService.updateTelephonySettings(businessId, input);
+  }
+
+  @Patch(":businessId/billing-settings")
+  async updateBillingSettings(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = businessBillingSettingsSchema.parse(body);
+    return this.businessesService.updateBillingSettings(businessId, input);
   }
 
   @Get(":businessId/pharmacy/refill-requests")

@@ -14,5 +14,18 @@ export const signInSchema = z.object({
   password: z.string().min(8),
 });
 
+export const changePasswordSchema = z.object({
+  email: z.string().email(),
+  currentPassword: z.string().min(8),
+  newPassword: z.string().min(8),
+});
+
+export const adminResetPasswordSchema = z.object({
+  email: z.string().email(),
+  newPassword: z.string().min(8),
+});
+
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type AdminResetPasswordInput = z.infer<typeof adminResetPasswordSchema>;

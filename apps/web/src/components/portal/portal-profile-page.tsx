@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { apiRequest } from "../../lib/api";
+import { PasswordChangeForm } from "../auth/password-change-form";
 import { PortalShell } from "./portal-shell";
 import { usePortalData } from "./use-portal-data";
 
@@ -165,10 +166,17 @@ export function PortalProfilePage({ businessId = "" }: Props) {
 
           <div className="detail-list">
             <div className="detail-row"><span>Category</span><strong>{business.category}</strong></div>
+            <div className="detail-row"><span>Medical Mode</span><strong>{business.medicalModeEnabled ? "Enabled" : "Disabled"}</strong></div>
             <div className="detail-row"><span>Email</span><strong>{business.email || "-"}</strong></div>
             <div className="detail-row"><span>Plan</span><strong>{business.selectedPlan || "-"}</strong></div>
             <div className="detail-row"><span>Billing cycle</span><strong>{business.billingCycle || "-"}</strong></div>
           </div>
+
+          {business.medicalModeEnabled ? (
+            <div className="status-banner success">
+              Medical mode is active for this business. Emergency-safe messaging and medical handling rules are enabled automatically for pharmacy and other medical categories.
+            </div>
+          ) : null}
 
           <div className="detail-block">
             <h3>Business summary</h3>
@@ -195,6 +203,10 @@ export function PortalProfilePage({ businessId = "" }: Props) {
             )}
           </div>
         </div>
+
+        {portal.session?.email ? (
+          <PasswordChangeForm email={portal.session.email} title="Change portal password" />
+        ) : null}
       </section>
     </PortalShell>
   );

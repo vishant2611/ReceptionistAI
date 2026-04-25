@@ -841,6 +841,284 @@ img {
   font-size: 0.95rem;
 }
 
+.admin-shell {
+  gap: 20px;
+}
+
+.admin-hero-card {
+  padding: 26px 28px;
+}
+
+.admin-display-title {
+  margin: 12px 0 8px;
+  font-size: clamp(2.3rem, 3.8vw, 3.6rem);
+  max-width: 720px;
+}
+
+.admin-hero-copy {
+  max-width: 680px;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  min-width: 0;
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 24px;
+  padding: 20px;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-main-column {
+  gap: 20px;
+  min-width: 0;
+}
+
+.admin-page-intro.compact {
+  margin-bottom: 14px;
+}
+
+.admin-section-title {
+  margin-top: 10px;
+  font-size: clamp(1.7rem, 2vw, 2.25rem);
+}
+
+.admin-lead {
+  margin-top: 6px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.admin-selector-list {
+  gap: 10px;
+}
+
+.admin-business-chip {
+  width: 100%;
+  padding: 12px 14px;
+  min-height: auto;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+}
+
+.admin-business-chip.selected {
+  border-color: rgba(34, 83, 255, 0.25);
+  background: linear-gradient(180deg, #ffffff, #f5f8ff);
+  box-shadow: 0 8px 20px rgba(34, 83, 255, 0.08);
+}
+
+.admin-business-chip-body {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-business-chip-body strong {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.admin-business-chip-body span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.admin-overview-card,
+.admin-panel-card {
+  padding: 20px;
+}
+
+.admin-overview-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 18px;
+  align-items: end;
+}
+
+.admin-usage-meter {
+  width: 100%;
+}
+
+.admin-usage-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #e9edf5;
+  overflow: hidden;
+}
+
+.admin-usage-fill {
+  height: 100%;
+  transition: width 180ms ease;
+}
+
+.admin-meter-copy {
+  margin-top: 8px;
+  font-size: 0.88rem;
+}
+
+.admin-stats-grid {
+  gap: 14px;
+}
+
+.admin-stat-card {
+  padding: 16px 18px;
+  gap: 8px;
+}
+
+.admin-stat-value {
+  margin-top: 8px;
+  margin-bottom: 0;
+  font-size: 2rem;
+}
+
+.admin-stat-copy {
+  margin-top: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.admin-detail-grid,
+.admin-control-grid {
+  gap: 16px;
+}
+
+.admin-detail-list {
+  gap: 10px;
+}
+
+.admin-detail-list.compact {
+  gap: 8px;
+}
+
+.admin-detail-list .detail-row {
+  padding: 11px 13px;
+  border-radius: 12px;
+  min-height: 0;
+  align-items: center;
+}
+
+.admin-detail-list .detail-row span,
+.admin-detail-list .detail-row strong {
+  font-size: 0.88rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-form-grid {
+  gap: 12px;
+}
+
+.admin-field {
+  gap: 6px;
+}
+
+.admin-field label {
+  font-size: 0.82rem;
+}
+
+.admin-field input,
+.admin-field select,
+.admin-field textarea {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+}
+
+.admin-field-full {
+  grid-column: 1 / -1;
+}
+
+.admin-action-row {
+  margin-top: 2px;
+}
+
+.admin-team-block {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.admin-team-header {
+  align-items: flex-start;
+}
+
+.admin-team-copy {
+  max-width: none;
+  margin-top: 8px;
+  font-size: 0.88rem;
+}
+
+.admin-member-list {
+  gap: 10px;
+}
+
+.admin-member-card {
+  padding: 14px;
+  gap: 8px;
+}
+
+.admin-member-card .member-head {
+  gap: 10px;
+}
+
+.admin-member-card .member-head strong {
+  font-size: 0.94rem;
+}
+
+.admin-member-card .member-head span {
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-member-actions {
+  gap: 8px;
+}
+
+@media (max-width: 1180px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    position: static;
+  }
+
+  .admin-overview-head {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-hero-card,
+  .admin-overview-card,
+  .admin-panel-card,
+  .admin-sidebar {
+    padding: 18px;
+  }
+
+  .admin-display-title {
+    font-size: clamp(2rem, 9vw, 2.8rem);
+  }
+}
+
 .member-card {
   padding: 18px;
   border-radius: 18px;
