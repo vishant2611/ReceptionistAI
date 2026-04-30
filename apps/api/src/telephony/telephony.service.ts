@@ -1279,6 +1279,8 @@ export class TelephonyService {
             "If the caller refuses or does not provide a phone number, clearly state that the order request is incomplete without a callback number and ask once more before ending the call.",
             "If the caller's name remains unclear, do not replace it with a guessed name. Keep the order pending and explicitly say the name still needs confirmation from staff or the caller.",
             "For restaurant calls, never turn an uncertain transcript into a confirmed customer identity.",
+            "If the caller asks about price, cost, or how much, treat that as a pricing question only. Do not convert it into quantity, pickup time, or another confirmation.",
+            "A pricing question must be answered with the known saved price before moving to the next order field.",
             "If exact saved pricing and quantity are both known, calculate and say the subtotal clearly before ending the call, for example 'Your total is $16 before tax.'",
             "If exact saved pricing is missing or uncertain, do not invent the total. Instead say the team will confirm the final total.",
             "Before ending a restaurant order call, give one concise recap with item, quantity, fulfillment timing, and total if confidently known.",
@@ -1914,7 +1916,7 @@ export class TelephonyService {
         if (callerSpeechPending && !responseInFlight) {
           triggerAssistantResponse(true);
         }
-      }, 1800);
+      }, 3200);
     };
 
     const sendOpeningGreeting = () => {
