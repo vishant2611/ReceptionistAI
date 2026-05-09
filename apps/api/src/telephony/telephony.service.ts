@@ -1172,6 +1172,34 @@ export class TelephonyService {
       rules.telephony && typeof rules.telephony === "object" && !Array.isArray(rules.telephony)
         ? (rules.telephony as Record<string, unknown>)
         : {};
+
+    // ── Knowledge Base ────────────────────────────────────────────────────────
+    const conversationGoal = typeof rules.conversationGoal === "string" ? rules.conversationGoal : "TAKE_MESSAGES";
+    const goalGuidance: Record<string, string> = {
+      TAKE_MESSAGES: "Focus on capturing the caller's name, number, and reason for calling, then set expectations for staff follow-up.",
+      TAKE_ORDERS: "Guide the caller toward placing a specific order. Capture item, quantity, contact, and fulfillment details.",
+      BOOK_APPOINTMENTS: "Guide the caller toward booking or scheduling. Capture preferred time, service needed, name, and contact.",
+      CAPTURE_LEADS: "Qualify the caller as a potential customer. Work through the lead capture flow questions in order and collect all required fields before ending the call. Be conversational and sales-focused — your job is to turn this call into a qualified lead.",
+    };
+    const kb = rules.knowledgeBase && typeof rules.knowledgeBase === "object" && !Array.isArray(rules.knowledgeBase)
+      ? (rules.knowledgeBase as Record<string, unknown>)
+      : {};
+    const activeFaqs = Array.isArray(kb.faqs)
+      ? (kb.faqs as Array<Record<string, unknown>>).filter((f) => f.isActive !== false && f.question && f.answer)
+      : [];
+    const activeObjections = Array.isArray(kb.objections)
+      ? (kb.objections as Array<Record<string, unknown>>).filter((o) => o.isActive !== false && o.objection && o.response)
+      : [];
+    const activeLeadCapture = Array.isArray(kb.leadCaptureFlow)
+      ? (kb.leadCaptureFlow as Array<Record<string, unknown>>)
+          .filter((q) => q.question && q.fieldName)
+          .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+      : [];
+    const activeKbServices = Array.isArray(kb.services)
+      ? (kb.services as Array<Record<string, unknown>>).filter((s) => s.isActive !== false && s.serviceName)
+      : [];
+    const differentiators = typeof kb.differentiators === "string" ? kb.differentiators.trim() : "";
+    // ─────────────────────────────────────────────────────────────────────────
     const officeHours = formatOfficeHours(business.officeHours) || "";
     const businessDate = formatCurrentBusinessDate(business.timezone || "America/Toronto");
     const officeHoursInstruction = officeHours
@@ -1295,6 +1323,51 @@ export class TelephonyService {
       "Capture caller intent, contact details, and any order or booking information clearly.",
       "At the end of an order-related call, summarize the request cautiously as a pending request for staff unless it is fully confirmed from the saved data.",
       "Be conservative. It is better to ask one extra clarifying question than to guess a missing detail.",
+
+      // ── Knowledge Base injections ──────────────────────────────────────────
+      `Conversation goal: ${conversationGoal}. ${goalGuidance[conversationGoal] ?? ""}`,
+
+      ...(activeKbServices.length > 0
+        ? [
+            "The following structured service details are available for this business:",
+            ...activeKbServices.map(
+              (s) =>
+                `- ${String(s.serviceName)}: ${String(s.description || "")}${s.whoItsFor ? ` Who it is for: ${String(s.whoItsFor)}.` : ""}${s.problemItSolves ? ` Problem it solves: ${String(s.problemItSolves)}.` : ""}`,
+            ),
+            "Use these service details when answering questions about what the business offers. Prefer these over the plain services summary when both exist.",
+          ]
+        : []),
+
+      ...(differentiators
+        ? [`Why choose ${business.name} over competitors: ${differentiators}`]
+        : []),
+
+      ...(activeFaqs.length > 0
+        ? [
+            "Frequently asked questions and their correct answers — use these verbatim or very closely when asked:",
+            ...activeFaqs.map((f) => `Q: ${String(f.question)}\nA: ${String(f.answer)}`),
+            "Do not invent answers to questions covered above. Use only the saved answers.",
+          ]
+        : []),
+
+      ...(activeObjections.length > 0
+        ? [
+            "Objection handling guide — when you detect hesitation or one of these objections, respond with the guided response:",
+            ...activeObjections.map((o) => `Objection: "${String(o.objection)}"\nResponse: "${String(o.response)}"`),
+          ]
+        : []),
+
+      ...(activeLeadCapture.length > 0
+        ? [
+            "Lead capture flow — ask these questions in order during every call before ending. Collect all required fields:",
+            ...activeLeadCapture.map(
+              (q) =>
+                `${Number(q.order)}. ${String(q.question)} — captures: ${String(q.fieldName)}${q.isRequired ? " (required)" : " (optional)"}`,
+            ),
+            "Work through this list conversationally. Do not skip required fields. If the caller refuses a required field, note it and move to the next.",
+          ]
+        : []),
+      // ─────────────────────────────────────────────────────────────────────
     ].join("\n");
   }
 
@@ -2007,7 +2080,7 @@ export class TelephonyService {
                   turn_detection: {
                     type: "semantic_vad",
                     eagerness: "high",
-                    interrupt_response: false,
+                    interrupt_response: true,
                     create_response: false,
                   },
                 },
@@ -2016,7 +2089,7 @@ export class TelephonyService {
                     type: "audio/pcmu",
                   },
                   voice: session.voice,
-                  speed: 1.0,
+                  speed: 1.15,
                 },
               },
             },

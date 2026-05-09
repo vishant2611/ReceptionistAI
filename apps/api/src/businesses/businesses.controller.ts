@@ -4,6 +4,7 @@ import { BusinessesService } from "./businesses.service";
 import {
   businessAiSettingsSchema,
   businessBillingSettingsSchema,
+  businessKnowledgeBaseSchema,
   businessMenuImportSchema,
   businessMenuUpdateSchema,
   businessOnboardingSchema,
@@ -71,6 +72,12 @@ export class BusinessesController {
   async updateAiSettings(@Param("businessId") businessId: string, @Body() body: unknown) {
     const input = businessAiSettingsSchema.parse(body);
     return this.businessesService.updateAiSettings(businessId, input);
+  }
+
+  @Patch(":businessId/knowledge-base")
+  async updateKnowledgeBase(@Param("businessId") businessId: string, @Body() body: unknown) {
+    const input = businessKnowledgeBaseSchema.parse(body);
+    return this.businessesService.updateKnowledgeBase(businessId, input);
   }
 
   @Patch(":businessId/telephony-settings")

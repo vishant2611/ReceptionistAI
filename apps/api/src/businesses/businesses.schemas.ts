@@ -39,9 +39,9 @@ export const businessTelephonySettingsSchema = z.object({
   provider: z.enum(["TWILIO"]).default("TWILIO"),
   connectionMode: z.enum(["DIRECT_TO_AI", "AI_AFTER_MISSED_RINGS", "BUSINESS_HOURS_ONLY"]).default("DIRECT_TO_AI"),
   businessNumber: z.string().max(40).optional().default(""),
-  twilioAccountSid: z.string().min(10).max(64).optional().default(""),
-  twilioAuthToken: z.string().min(10).max(128).optional().default(""),
-  twilioNumber: z.string().min(7).max(40),
+  twilioAccountSid: z.string().max(64).optional().default(""),
+  twilioAuthToken: z.string().max(128).optional().default(""),
+  twilioNumber: z.string().max(40).optional().default(""),
   fallbackNumber: z.string().max(40).optional().default(""),
   aiReceptionistEnabled: z.boolean().default(true),
   routingMode: z.enum(["AI_IMMEDIATELY", "STAFF_FIRST_THEN_AI", "STAFF_ONLY"]).default("AI_IMMEDIATELY"),
@@ -149,3 +149,51 @@ export const pharmacyCallbackRequestsUpdateSchema = z.object({
 });
 
 export type PharmacyCallbackRequestsUpdateInput = z.infer<typeof pharmacyCallbackRequestsUpdateSchema>;
+
+// ─── Knowledge Base schemas ───────────────────────────────────────────────────
+
+export const kbFaqSchema = z.object({
+  id: z.string().min(1),
+  question: z.string().min(2),
+  answer: z.string().min(2),
+  isActive: z.boolean().default(true),
+});
+
+export const kbObjectionSchema = z.object({
+  id: z.string().min(1),
+  objection: z.string().min(2),
+  response: z.string().min(2),
+  isActive: z.boolean().default(true),
+});
+
+export const leadCaptureFieldNameEnum = z.enum(["name", "phone", "businessName", "industry", "requirement"]);
+
+export const kbLeadCaptureQuestionSchema = z.object({
+  id: z.string().min(1),
+  question: z.string().min(2),
+  fieldName: leadCaptureFieldNameEnum,
+  order: z.coerce.number().int().min(1),
+  isRequired: z.boolean().default(true),
+});
+
+export const kbServiceSchema = z.object({
+  id: z.string().min(1),
+  serviceName: z.string().min(2),
+  description: z.string().optional().default(""),
+  whoItsFor: z.string().optional().default(""),
+  problemItSolves: z.string().optional().default(""),
+  isActive: z.boolean().default(true),
+});
+
+export const conversationGoalEnum = z.enum(["TAKE_MESSAGES", "TAKE_ORDERS", "BOOK_APPOINTMENTS", "CAPTURE_LEADS"]);
+
+export const businessKnowledgeBaseSchema = z.object({
+  faqs: z.array(kbFaqSchema).default([]),
+  objections: z.array(kbObjectionSchema).default([]),
+  leadCaptureFlow: z.array(kbLeadCaptureQuestionSchema).default([]),
+  services: z.array(kbServiceSchema).default([]),
+  differentiators: z.string().max(2000).optional().default(""),
+  conversationGoal: conversationGoalEnum.default("TAKE_MESSAGES"),
+});
+
+export type BusinessKnowledgeBaseInput = z.infer<typeof businessKnowledgeBaseSchema>;

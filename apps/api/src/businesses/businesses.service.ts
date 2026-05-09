@@ -6,6 +6,7 @@ import { BusinessMemberCreateInput } from "./business-members.schemas";
 import {
   BusinessAiSettingsInput,
   BusinessBillingSettingsInput,
+  BusinessKnowledgeBaseInput,
   BusinessMenuImportInput,
   BusinessMenuUpdateInput,
   BusinessOnboardingInput,
@@ -241,6 +242,73 @@ function extractBillingSettings(value: unknown) {
     status: String(record.status ?? "").trim(),
   };
 }
+
+// ─── Knowledge Base extractors ────────────────────────────────────────────────
+
+function extractKnowledgeBase(value: unknown) {
+  const rules = readBusinessRules(value);
+  const kb = rules.knowledgeBase;
+  if (!kb || typeof kb !== "object" || Array.isArray(kb)) {
+    return { faqs: [], objections: [], leadCaptureFlow: [], services: [], differentiators: "" };
+  }
+  const record = kb as Record<string, unknown>;
+
+  const faqs = Array.isArray(record.faqs)
+    ? record.faqs
+        .filter((f) => f && typeof f === "object")
+        .map((f) => {
+          const r = f as Record<string, unknown>;
+          return { id: String(r.id ?? ""), question: String(r.question ?? ""), answer: String(r.answer ?? ""), isActive: r.isActive !== false };
+        })
+        .filter((f) => f.id && f.question && f.answer)
+    : [];
+
+  const objections = Array.isArray(record.objections)
+    ? record.objections
+        .filter((o) => o && typeof o === "object")
+        .map((o) => {
+          const r = o as Record<string, unknown>;
+          return { id: String(r.id ?? ""), objection: String(r.objection ?? ""), response: String(r.response ?? ""), isActive: r.isActive !== false };
+        })
+        .filter((o) => o.id && o.objection && o.response)
+    : [];
+
+  const leadCaptureFlow = Array.isArray(record.leadCaptureFlow)
+    ? record.leadCaptureFlow
+        .filter((q) => q && typeof q === "object")
+        .map((q) => {
+          const r = q as Record<string, unknown>;
+          return { id: String(r.id ?? ""), question: String(r.question ?? ""), fieldName: String(r.fieldName ?? ""), order: Number(r.order ?? 0), isRequired: r.isRequired !== false };
+        })
+        .filter((q) => q.id && q.question && q.fieldName)
+        .sort((a, b) => a.order - b.order)
+    : [];
+
+  const services = Array.isArray(record.services)
+    ? record.services
+        .filter((s) => s && typeof s === "object")
+        .map((s) => {
+          const r = s as Record<string, unknown>;
+          return { id: String(r.id ?? ""), serviceName: String(r.serviceName ?? ""), description: String(r.description ?? ""), whoItsFor: String(r.whoItsFor ?? ""), problemItSolves: String(r.problemItSolves ?? ""), isActive: r.isActive !== false };
+        })
+        .filter((s) => s.id && s.serviceName)
+    : [];
+
+  return {
+    faqs,
+    objections,
+    leadCaptureFlow,
+    services,
+    differentiators: typeof record.differentiators === "string" ? record.differentiators : "",
+  };
+}
+
+function extractConversationGoal(value: unknown): string {
+  const rules = readBusinessRules(value);
+  return typeof rules.conversationGoal === "string" ? rules.conversationGoal : "TAKE_MESSAGES";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function extractPharmacyRefillRequests(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -810,6 +878,8 @@ export class BusinessesService {
         menuSource: extractMenuSource(business.answeringRules),
         pharmacyRefillRequests: extractPharmacyRefillRequests(business.answeringRules),
         pharmacyCallbackRequests: extractPharmacyCallbackRequests(business.answeringRules),
+        knowledgeBase: extractKnowledgeBase(business.answeringRules),
+        conversationGoal: extractConversationGoal(business.answeringRules),
         billingOverview,
       },
     };
@@ -1154,6 +1224,44 @@ export class BusinessesService {
         voicePreference: business.voicePreference,
         answeringRules: business.answeringRules,
         medicalModeEnabled: resolveMedicalMode(business),
+      },
+    };
+  }
+
+  async updateKnowledgeBase(businessId: string, input: BusinessKnowledgeBaseInput) {
+    const existing = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Business not found.");
+    }
+
+    const previousRules = readBusinessRules(existing.answeringRules);
+
+    const business = await this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        answeringRules: {
+          ...previousRules,
+          conversationGoal: input.conversationGoal,
+          knowledgeBase: {
+            faqs: input.faqs,
+            objections: input.objections,
+            leadCaptureFlow: input.leadCaptureFlow,
+            services: input.services,
+            differentiators: input.differentiators ?? "",
+          },
+        },
+      },
+    });
+
+    return {
+      message: "Knowledge base updated successfully.",
+      business: {
+        id: business.id,
+        knowledgeBase: extractKnowledgeBase(business.answeringRules),
+        conversationGoal: extractConversationGoal(business.answeringRules),
       },
     };
   }

@@ -76,12 +76,7 @@ export function TeamManagement({ businessId, initialMembers }: TeamManagementPro
   return (
     <section className="grid-2">
       <div className="surface-card stack-md">
-        <div className="page-intro">
-          <span className="eyebrow">Team</span>
-          <h2 className="section-title" style={{ marginTop: 14 }}>
-            User management
-          </h2>
-        </div>
+        <h3 className="card-section-title">User management</h3>
 
         <div className="detail-block">
           <h3>How this works</h3>
@@ -125,12 +120,7 @@ export function TeamManagement({ businessId, initialMembers }: TeamManagementPro
       </div>
 
       <div className="surface-card stack-md">
-        <div className="page-intro">
-          <span className="eyebrow">Members</span>
-          <h2 className="section-title" style={{ marginTop: 14 }}>
-            Current team
-          </h2>
-        </div>
+        <h3 className="card-section-title">Current team</h3>
 
         <div className="detail-list">
           {members.length === 0 ? (
@@ -149,6 +139,16 @@ export function TeamManagement({ businessId, initialMembers }: TeamManagementPro
               </div>
             ))
           )}
+        </div>
+
+        <div className="role-guide">
+          <p className="role-guide-label">Role guide</p>
+          {Object.entries(roleDescriptions).map(([role, desc]) => (
+            <div key={role} className="role-guide-row">
+              <span className="inline-badge">{role.replaceAll("_", " ")}</span>
+              <p>{desc}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>

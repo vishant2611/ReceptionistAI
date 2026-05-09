@@ -82,6 +82,7 @@ img {
 .stack-md {
   display: grid;
   gap: 18px;
+  align-content: start;
 }
 
 .hero-card,
@@ -781,7 +782,48 @@ img {
 }
 
 .page-intro {
-  margin-bottom: 26px;
+  margin-bottom: 0;
+}
+
+.card-section-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.role-guide {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.role-guide-label {
+  margin: 0 0 2px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-family: var(--font-heading);
+}
+
+.role-guide-row {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.role-guide-row p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .subtle-divider {
@@ -1769,4 +1811,320 @@ img {
   .menu-stat-grid {
     grid-template-columns: 1fr;
   }
+}
+
+
+/* ── Portal Section (Knowledge Base layout) ─────────────────────────────────── */
+.portal-section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.portal-section-header {
+  display: grid;
+  gap: 5px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.portal-section-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.portal-section-desc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.portal-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+/* ── Form Elements ───────────────────────────────────────────────────────────── */
+.form-group {
+  display: grid;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  font-family: var(--font-heading);
+  letter-spacing: 0.01em;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 0.95rem;
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  border-color: #2f55d4;
+  box-shadow: 0 0 0 3px rgba(47, 85, 212, 0.1);
+}
+
+.form-textarea {
+  min-height: auto;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: 12px;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: none;
+  background: #2f55d4;
+  color: #ffffff;
+  transition: background 0.15s, transform 0.15s;
+  letter-spacing: -0.01em;
+}
+
+.button-primary:hover {
+  background: #2547b8;
+  transform: translateY(-1px);
+}
+
+.button-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Conversation Goal Cards ─────────────────────────────────────────────────── */
+.goal-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.goal-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.goal-card:hover {
+  border-color: #a8bcf7;
+  background: #f5f7ff;
+}
+
+.goal-card.selected {
+  border-color: #2f55d4;
+  background: #f0f4ff;
+}
+
+.goal-card-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+}
+
+.goal-card.selected .goal-card-radio {
+  border-color: #2f55d4;
+  background: #2f55d4;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.goal-card-text strong {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.goal-card-text span {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ── Knowledge Base Cards ────────────────────────────────────────────────────── */
+.kb-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  position: relative;
+  transition: box-shadow 0.15s;
+}
+
+.kb-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.kb-card-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.kb-field-grow {
+  flex: 1 1 200px;
+}
+
+.kb-card-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+
+/* Toggle switch */
+.kb-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-heading);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.kb-toggle-label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: #d1d9e6;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.kb-toggle-label input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: transform 0.2s;
+}
+
+.kb-toggle-label input[type="checkbox"]:checked {
+  background: #2f55d4;
+}
+
+.kb-toggle-label input[type="checkbox"]:checked::after {
+  transform: translateX(14px);
+}
+
+.kb-remove-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: var(--font-heading);
+  color: #e53e3e;
+  background: #fff1f1;
+  border: 1px solid #fbd5d5;
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.kb-remove-btn:hover {
+  background: #ffe0e0;
+}
+
+.kb-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.kb-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px dashed var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: var(--font-heading);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.kb-add-btn:hover {
+  border-color: #2f55d4;
+  color: #2f55d4;
+  background: #f0f4ff;
+}
+
+@media (max-width: 640px) {
+  .kb-two-col { grid-template-columns: 1fr; }
+  .kb-card-row { flex-direction: column; align-items: stretch; }
+  .goal-cards { grid-template-columns: 1fr; }
 }

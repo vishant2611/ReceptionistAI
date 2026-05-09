@@ -85,10 +85,7 @@ export function PortalBillingPage({ businessId = "" }: Props) {
       {portal.canViewBilling ? (
         <section className="grid-2">
           <div className="surface-card stack-md">
-            <div className="page-intro">
-              <span className="eyebrow">Usage</span>
-              <h2 className="section-title" style={{ marginTop: 14 }}>Current billing cycle</h2>
-            </div>
+            <h3 className="card-section-title">Current billing cycle</h3>
 
             <div className="detail-list">
               <div className="detail-row"><span>Plan</span><strong>{billing?.planName || portal.business.selectedPlan || "Free Trial"}</strong></div>
@@ -117,10 +114,7 @@ export function PortalBillingPage({ businessId = "" }: Props) {
           </div>
 
           <div className="surface-card stack-md">
-            <div className="page-intro">
-              <span className="eyebrow">Minutes</span>
-              <h2 className="section-title" style={{ marginTop: 14 }}>Usage breakdown</h2>
-            </div>
+            <h3 className="card-section-title">Usage breakdown</h3>
 
             <div className="detail-list">
               <div className="detail-row"><span>Included minutes</span><strong>{billing?.includedMinutes ?? 0}</strong></div>
@@ -134,10 +128,7 @@ export function PortalBillingPage({ businessId = "" }: Props) {
 
           {canManageBilling ? (
             <form className="surface-card stack-md" onSubmit={onSubmit}>
-              <div className="page-intro">
-                <span className="eyebrow">Controls</span>
-                <h2 className="section-title" style={{ marginTop: 14 }}>Billing settings</h2>
-              </div>
+              <h3 className="card-section-title">Billing settings</h3>
 
               <div className="form-grid two-col">
                 <div className="field">
@@ -193,10 +184,7 @@ export function PortalBillingPage({ businessId = "" }: Props) {
           ) : null}
 
           <div className="surface-card stack-md" style={{ gridColumn: "1 / -1" }}>
-            <div className="page-intro">
-              <span className="eyebrow">How Billing Works</span>
-              <h2 className="section-title" style={{ marginTop: 14 }}>What these numbers mean</h2>
-            </div>
+            <h3 className="card-section-title">What these numbers mean</h3>
             <div className="detail-block">
               <h3>Minute tracking</h3>
               <p>We total completed call time within the current billing cycle, compare it against your included plan minutes, and estimate any overage using the current per-minute rate.</p>

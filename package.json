@@ -14,6 +14,7 @@
     "lint:web": "npm run lint --workspace @receptionist-ai/web",
     "lint:api": "npm run lint --workspace @receptionist-ai/api",
     "prisma:generate": "npm run prisma:generate --workspace @receptionist-ai/api",
-    "prisma:migrate": "npm run prisma:migrate --workspace @receptionist-ai/api"
+    "prisma:migrate": "npm run prisma:migrate --workspace @receptionist-ai/api",
+    "seed:deltaprompt": "ts-node --project apps/api/tsconfig.json -r tsconfig-paths/register scripts/seed-deltaprompt.ts"
   }
 }
