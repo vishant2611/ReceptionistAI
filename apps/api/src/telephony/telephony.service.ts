@@ -118,20 +118,25 @@ function normalizePhoneLookup(value: string | null | undefined) {
 
 function mapVoicePreferenceToRealtimeVoice(voicePreference: string | null | undefined) {
   const value = normalizeText(voicePreference || "");
+  const isBritish = value.includes("british");
+  // Check female FIRST (because "female" contains "male" as a substring)
+  const isFemale = value.includes("female");
+  const isMale = !isFemale && value.includes("male");
 
-  if (value.includes("male")) {
-    return "ash";
-  }
-
-  if (value.includes("british")) {
-    return "verse";
-  }
-
-  if (value.includes("professional")) {
-    return "coral";
-  }
+  if (isBritish && isFemale) return "shimmer";
+  if (isBritish && isMale) return "verse";
+  if (isFemale) return "coral";
+  if (isMale) return "ash";
 
   return "coral";
+}
+
+function getVoiceAccentInstruction(voicePreference: string | null | undefined) {
+  const value = normalizeText(voicePreference || "");
+  if (value.includes("british")) {
+    return "Speak with a clear, natural British English accent. Use British pronunciation, intonation, and phrasing throughout the call.";
+  }
+  return "";
 }
 
 function formatCurrentBusinessDate(timezone: string) {
@@ -1246,6 +1251,7 @@ export class TelephonyService {
       `Emergency guidance: ${emergencyMessage}`,
       `Telephony consent message: ${consentMessage}`,
       "Speak only in clear, natural English.",
+      getVoiceAccentInstruction(business.voicePreference),
       "Use short, natural spoken sentences that sound like a real receptionist.",
       "Sound like a polished, professional front-desk sales and service representative.",
       "Your tone should be calm, confident, warm, and conversion-focused.",

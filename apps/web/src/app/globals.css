@@ -1927,6 +1927,81 @@ img {
   transform: none;
 }
 
+/* ── Voice Preference Cards ──────────────────────────────────────────────────── */
+.voice-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.voice-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.voice-card:hover {
+  border-color: #a8bcf7;
+  background: #f5f7ff;
+}
+
+.voice-card.selected {
+  border-color: #2f55d4;
+  background: #f0f4ff;
+}
+
+.voice-card-flag {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.voice-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-card-text strong {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.voice-card-text span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.voice-card-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.voice-card.selected .voice-card-radio {
+  border-color: #2f55d4;
+  background: #2f55d4;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+@media (max-width: 640px) {
+  .voice-cards { grid-template-columns: 1fr; }
+}
+
 /* ── Conversation Goal Cards ─────────────────────────────────────────────────── */
 .goal-cards {
   display: grid;

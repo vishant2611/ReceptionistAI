@@ -9,12 +9,25 @@ type Props = {
   businessId?: string;
 };
 
+const VOICE_OPTIONS = [
+  { value: "American Female - Professional", flag: "🇺🇸", label: "American Female", desc: "Warm, friendly, conversion-focused" },
+  { value: "American Male - Professional", flag: "🇺🇸", label: "American Male", desc: "Confident, clear, business-ready" },
+  { value: "British Female - Polite", flag: "🇬🇧", label: "British Female", desc: "Refined, calm, polite" },
+  { value: "British Male - Formal", flag: "🇬🇧", label: "British Male", desc: "Polished, formal, authoritative" },
+];
+
 export function PortalSettingsPage({ businessId = "" }: Props) {
   const portal = usePortalData(businessId);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const business = portal.business;
+  const [selectedVoice, setSelectedVoice] = useState(business?.voicePreference || "American Female - Professional");
+  const [voiceInitialized, setVoiceInitialized] = useState(false);
+  if (business && !voiceInitialized) {
+    setSelectedVoice(business.voicePreference || "American Female - Professional");
+    setVoiceInitialized(true);
+  }
 
   const answeringRules =
     business?.answeringRules && typeof business.answeringRules === "object" && !Array.isArray(business.answeringRules)
@@ -153,15 +166,26 @@ export function PortalSettingsPage({ businessId = "" }: Props) {
               </select>
             </div>
 
-            <div className="field">
-              <label htmlFor="voice-preference">Voice preference</label>
-              <select defaultValue={settingsDefaults.voicePreference} id="voice-preference" name="voicePreference">
-                <option>American Female - Professional</option>
-                <option>American Female - Warm</option>
-                <option>British Female - Polite</option>
-                <option>American Male - Professional</option>
-                <option>British Male - Formal</option>
-              </select>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label>Voice preference</label>
+              <input type="hidden" name="voicePreference" value={selectedVoice} />
+              <div className="voice-cards">
+                {VOICE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`voice-card${selectedVoice === opt.value ? " selected" : ""}`}
+                    onClick={() => setSelectedVoice(opt.value)}
+                  >
+                    <span className="voice-card-flag">{opt.flag}</span>
+                    <div className="voice-card-text">
+                      <strong>{opt.label}</strong>
+                      <span>{opt.desc}</span>
+                    </div>
+                    <span className="voice-card-radio" />
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="field">
