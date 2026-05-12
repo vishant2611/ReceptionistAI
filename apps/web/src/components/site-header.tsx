@@ -5,6 +5,7 @@ const links = [
   { href: "/signin", label: "Sign in" },
   { href: "/signup", label: "Create account" },
   { href: "/onboarding", label: "Onboarding" },
+  { href: "/#contact", label: "Get in touch" },
 ];
 
 export function SiteHeader() {

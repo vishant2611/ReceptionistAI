@@ -108,7 +108,7 @@ export default function HomePage() {
           ))}
         </section>
 
-        <section className="contact-section">
+        <section className="contact-section" id="contact">
           <div className="contact-header">
             <span className="eyebrow">Get in touch</span>
             <h2 className="contact-title">Talk to the team behind Receptionist AI</h2>

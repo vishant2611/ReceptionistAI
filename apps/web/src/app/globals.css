@@ -1,3 +1,8 @@
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
 :root {
   color-scheme: light;
   --font-heading: "Segoe UI", sans-serif;
