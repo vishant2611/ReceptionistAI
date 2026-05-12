@@ -107,6 +107,42 @@ export default function HomePage() {
             </article>
           ))}
         </section>
+
+        <section className="contact-section">
+          <div className="contact-header">
+            <span className="eyebrow">Get in touch</span>
+            <h2 className="contact-title">Talk to the team behind Receptionist AI</h2>
+            <p className="contact-subtitle">
+              Built by DeltaPrompt AI — a full-service AI agency helping businesses Stop Waiting and Start Winning with AI.
+            </p>
+          </div>
+
+          <div className="contact-grid">
+            <a className="contact-card" href="mailto:mahesh@deltaprompt.ai">
+              <span className="contact-icon" aria-hidden="true">✉️</span>
+              <div className="contact-text">
+                <small>Email us</small>
+                <strong>mahesh@deltaprompt.ai</strong>
+              </div>
+            </a>
+
+            <a className="contact-card" href="tel:+14379901708">
+              <span className="contact-icon" aria-hidden="true">📞</span>
+              <div className="contact-text">
+                <small>Call us</small>
+                <strong>+1 (437) 990-1708</strong>
+              </div>
+            </a>
+
+            <a className="contact-card" href="https://www.deltaprompt.ai/" target="_blank" rel="noopener noreferrer">
+              <span className="contact-icon" aria-hidden="true">🌐</span>
+              <div className="contact-text">
+                <small>Visit our site</small>
+                <strong>www.deltaprompt.ai</strong>
+              </div>
+            </a>
+          </div>
+        </section>
       </section>
     </main>
   );
