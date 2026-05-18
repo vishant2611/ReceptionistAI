@@ -116,6 +116,196 @@ function normalizePhoneLookup(value: string | null | undefined) {
   return digits;
 }
 
+// ── Office Hours Parser ──────────────────────────────────────────────────────
+// Office hours are stored as free-form strings (e.g. "Monday: 9:00 AM – 6:00 PM"
+// or "Saturday: Closed"). This parser extracts open/close times per weekday so
+// we can server-side validate that AI-booked appointments fall within hours.
+
+const DAY_NAME_TO_INDEX: Record<string, number> = {
+  sunday: 0, sun: 0,
+  monday: 1, mon: 1,
+  tuesday: 2, tue: 2, tues: 2,
+  wednesday: 3, wed: 3,
+  thursday: 4, thu: 4, thur: 4, thurs: 4,
+  friday: 5, fri: 5,
+  saturday: 6, sat: 6,
+};
+
+type DayHours = { closed: boolean; openMin?: number; closeMin?: number };
+
+function parseTimeToMinutes(raw: string): number | null {
+  const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?$/i);
+  if (!m) return null;
+  let hours = Number(m[1]);
+  const mins = m[2] ? Number(m[2]) : 0;
+  const ampm = (m[3] || "").toLowerCase().replace(/\./g, "");
+  if (ampm === "pm" && hours < 12) hours += 12;
+  if (ampm === "am" && hours === 12) hours = 0;
+  if (hours > 23 || mins > 59) return null;
+  return hours * 60 + mins;
+}
+
+function parseOfficeHours(officeHours: unknown): Record<number, DayHours> {
+  const result: Record<number, DayHours> = {};
+  if (!Array.isArray(officeHours)) return result;
+
+  for (const entry of officeHours) {
+    if (typeof entry !== "string") continue;
+    // Match: "Monday: 9:00 AM – 6:00 PM" or "Sat: Closed"
+    const dayMatch = entry.match(/^([A-Za-z]+)\s*[:\-]\s*(.+)$/);
+    if (!dayMatch) continue;
+    const dayKey = dayMatch[1].trim().toLowerCase();
+    const dayIdx = DAY_NAME_TO_INDEX[dayKey];
+    if (dayIdx === undefined) continue;
+    const rest = dayMatch[2].trim();
+
+    if (/closed/i.test(rest)) {
+      result[dayIdx] = { closed: true };
+      continue;
+    }
+
+    // Match a time range with various dash characters
+    const timeMatch = rest.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?)\s*(?:[-–—to]+)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?)/i);
+    if (!timeMatch) continue;
+    const open = parseTimeToMinutes(timeMatch[1].trim());
+    const close = parseTimeToMinutes(timeMatch[2].trim());
+    if (open === null || close === null) continue;
+    result[dayIdx] = { closed: false, openMin: open, closeMin: close };
+  }
+
+  return result;
+}
+
+// Returns null if within hours, otherwise an error message.
+function checkWithinOfficeHours(
+  startTime: Date,
+  durationMinutes: number,
+  officeHours: unknown,
+): string | null {
+  const parsed = parseOfficeHours(officeHours);
+  if (Object.keys(parsed).length === 0) {
+    // If no parseable office hours, don't block — let AI/prompt handle it.
+    return null;
+  }
+
+  const dayIdx = startTime.getDay();
+  const dayInfo = parsed[dayIdx];
+  if (!dayInfo) {
+    // Day not listed — don't block, prompt will guide AI
+    return null;
+  }
+
+  if (dayInfo.closed) {
+    const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dayIdx];
+    return `The business is closed on ${dayName}. Please suggest a different day.`;
+  }
+
+  const startMin = startTime.getHours() * 60 + startTime.getMinutes();
+  const endMin = startMin + durationMinutes;
+
+  if (dayInfo.openMin !== undefined && startMin < dayInfo.openMin) {
+    return `Proposed time is before opening. Office opens at ${formatMinutes(dayInfo.openMin)}.`;
+  }
+  if (dayInfo.closeMin !== undefined && endMin > dayInfo.closeMin) {
+    return `Appointment would end after closing. Office closes at ${formatMinutes(dayInfo.closeMin)}.`;
+  }
+
+  return null;
+}
+
+function formatMinutes(mins: number) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+// ── AI Appointment Tools ─────────────────────────────────────────────────────
+// These are the OpenAI Realtime API function tools the AI can call DURING a call
+// to check availability and book appointments. The AI is instructed (via the
+// system prompt) to always pivot toward booking a follow-up appointment.
+
+const APPOINTMENT_TOOLS = [
+  {
+    type: "function",
+    name: "check_availability",
+    description:
+      "Check if a proposed appointment time slot is free. Always call this BEFORE booking to confirm the slot is available. Returns whether the slot is open and any conflicting appointments.",
+    parameters: {
+      type: "object",
+      properties: {
+        startTime: {
+          type: "string",
+          description:
+            "Proposed start time as ISO 8601 with timezone offset (e.g. '2026-11-25T14:00:00-05:00'). Convert caller's natural-language time (e.g. 'Tuesday at 2pm') using the business timezone provided in the system prompt.",
+        },
+        durationMinutes: {
+          type: "number",
+          description: "Duration in minutes (e.g. 30, 60).",
+        },
+      },
+      required: ["startTime", "durationMinutes"],
+    },
+  },
+  {
+    type: "function",
+    name: "suggest_available_slots",
+    description:
+      "Get a list of open time slots on a given date. Use when the caller's preferred time is taken or when they want suggestions.",
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Date in YYYY-MM-DD format, interpreted in business timezone.",
+        },
+        durationMinutes: {
+          type: "number",
+          description: "Desired duration in minutes.",
+        },
+      },
+      required: ["date", "durationMinutes"],
+    },
+  },
+  {
+    type: "function",
+    name: "book_appointment",
+    description:
+      "Book an appointment after the caller has confirmed the time and you've verified availability. Returns booking confirmation. NEVER call this without first calling check_availability and getting caller confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description:
+            "Short descriptive title, e.g. 'AI Strategy Call with John Smith from GenX Restaurant'.",
+        },
+        startTime: {
+          type: "string",
+          description: "Start time as ISO 8601 with timezone offset.",
+        },
+        durationMinutes: { type: "number" },
+        customerName: { type: "string" },
+        customerPhone: {
+          type: "string",
+          description: "Caller's phone number (the AI should have collected this).",
+        },
+        customerEmail: { type: "string" },
+        serviceName: {
+          type: "string",
+          description: "Which service or topic the appointment is for.",
+        },
+        notes: {
+          type: "string",
+          description: "Brief notes about what the caller wants to discuss or accomplish.",
+        },
+      },
+      required: ["title", "startTime", "durationMinutes"],
+    },
+  },
+] as const;
+
 function mapVoicePreferenceToRealtimeVoice(voicePreference: string | null | undefined) {
   const value = normalizeText(voicePreference || "");
   const isBritish = value.includes("british");
@@ -1021,6 +1211,233 @@ export class TelephonyService {
     );
   }
 
+  // ── AI Appointment Tool Executor ────────────────────────────────────────────
+  // Called when the AI invokes one of the appointment function tools during a
+  // live call. Returns a JSON-serializable object that gets sent back to the AI.
+  private async executeAppointmentTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    businessId: string,
+    callId: string,
+  ): Promise<Record<string, unknown>> {
+    if (!businessId) {
+      return { success: false, error: "Missing business context." };
+    }
+
+    // Load business once (for officeHours + timezone)
+    const businessForHours = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { officeHours: true, timezone: true },
+    });
+    const officeHours = businessForHours?.officeHours ?? [];
+
+    if (toolName === "check_availability") {
+      const startIso = String(args.startTime ?? "");
+      const duration = Math.max(5, Math.min(720, Number(args.durationMinutes) || 30));
+
+      if (!startIso) {
+        return { success: false, error: "startTime is required." };
+      }
+
+      const startDate = new Date(startIso);
+      if (Number.isNaN(startDate.getTime())) {
+        return { success: false, error: "Invalid startTime format." };
+      }
+      const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
+
+      // ── Office Hours Check ──
+      const hoursError = checkWithinOfficeHours(startDate, duration, officeHours);
+      if (hoursError) {
+        return {
+          success: true,
+          available: false,
+          reason: "outside_office_hours",
+          message: hoursError,
+        };
+      }
+
+      // Look for overlap: appointment's [start, start+duration) overlaps [proposedStart, proposedEnd)
+      const candidates = await this.prisma.appointment.findMany({
+        where: {
+          businessId,
+          status: { notIn: ["CANCELLED", "NO_SHOW"] },
+          startTime: {
+            gte: new Date(startDate.getTime() - 24 * 60 * 60 * 1000),
+            lte: new Date(endDate.getTime() + 24 * 60 * 60 * 1000),
+          },
+        },
+        orderBy: { startTime: "asc" },
+      });
+
+      const conflicts = candidates.filter((a) => {
+        const aStart = a.startTime.getTime();
+        const aEnd = aStart + a.durationMinutes * 60 * 1000;
+        return aStart < endDate.getTime() && aEnd > startDate.getTime();
+      });
+
+      return {
+        success: true,
+        available: conflicts.length === 0,
+        proposedStart: startDate.toISOString(),
+        proposedEnd: endDate.toISOString(),
+        durationMinutes: duration,
+        conflicts: conflicts.map((c) => ({
+          title: c.title,
+          startTime: c.startTime.toISOString(),
+          durationMinutes: c.durationMinutes,
+        })),
+      };
+    }
+
+    if (toolName === "suggest_available_slots") {
+      const dateStr = String(args.date ?? "");
+      const duration = Math.max(5, Math.min(720, Number(args.durationMinutes) || 30));
+
+      if (!dateStr) {
+        return { success: false, error: "date is required (YYYY-MM-DD)." };
+      }
+
+      // Determine office hours for that day from parsed config; fall back to 9–5
+      const tempDate = new Date(`${dateStr}T12:00:00`);
+      if (Number.isNaN(tempDate.getTime())) {
+        return { success: false, error: "Invalid date format." };
+      }
+      const parsedHours = parseOfficeHours(officeHours);
+      const dayHours = parsedHours[tempDate.getDay()];
+
+      if (dayHours?.closed) {
+        return {
+          success: true,
+          date: dateStr,
+          durationMinutes: duration,
+          availableSlots: [],
+          message: "The business is closed on this day. Please suggest a different day.",
+        };
+      }
+
+      const openMin = dayHours?.openMin ?? 9 * 60;
+      const closeMin = dayHours?.closeMin ?? 17 * 60;
+      const openHour = Math.floor(openMin / 60);
+      const openMinute = openMin % 60;
+      const closeHour = Math.floor(closeMin / 60);
+      const closeMinute = closeMin % 60;
+
+      const dayStart = new Date(`${dateStr}T${String(openHour).padStart(2, "0")}:${String(openMinute).padStart(2, "0")}:00`);
+      const dayEnd = new Date(`${dateStr}T${String(closeHour).padStart(2, "0")}:${String(closeMinute).padStart(2, "0")}:00`);
+
+      const existing = await this.prisma.appointment.findMany({
+        where: {
+          businessId,
+          status: { notIn: ["CANCELLED", "NO_SHOW"] },
+          startTime: {
+            gte: new Date(dayStart.getTime() - 60 * 60 * 1000),
+            lte: new Date(dayEnd.getTime() + 60 * 60 * 1000),
+          },
+        },
+        orderBy: { startTime: "asc" },
+      });
+
+      const slots: string[] = [];
+      const slotMs = 30 * 60 * 1000;
+      for (let t = dayStart.getTime(); t + duration * 60 * 1000 <= dayEnd.getTime(); t += slotMs) {
+        const slotStart = t;
+        const slotEnd = t + duration * 60 * 1000;
+        const overlaps = existing.some((a) => {
+          const aStart = a.startTime.getTime();
+          const aEnd = aStart + a.durationMinutes * 60 * 1000;
+          return aStart < slotEnd && aEnd > slotStart;
+        });
+        if (!overlaps) {
+          slots.push(new Date(slotStart).toISOString());
+        }
+        if (slots.length >= 6) break;
+      }
+
+      return {
+        success: true,
+        date: dateStr,
+        durationMinutes: duration,
+        availableSlots: slots,
+      };
+    }
+
+    if (toolName === "book_appointment") {
+      const title = String(args.title ?? "").trim();
+      const startIso = String(args.startTime ?? "");
+      const duration = Math.max(5, Math.min(720, Number(args.durationMinutes) || 30));
+
+      if (!title || !startIso) {
+        return { success: false, error: "title and startTime are required." };
+      }
+
+      const startDate = new Date(startIso);
+      if (Number.isNaN(startDate.getTime())) {
+        return { success: false, error: "Invalid startTime format." };
+      }
+
+      // ── Office Hours Check (defensive) ──
+      const bookingHoursError = checkWithinOfficeHours(startDate, duration, officeHours);
+      if (bookingHoursError) {
+        return {
+          success: false,
+          error: bookingHoursError,
+          reason: "outside_office_hours",
+        };
+      }
+
+      // Re-check availability defensively
+      const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
+      const conflict = await this.prisma.appointment.findFirst({
+        where: {
+          businessId,
+          status: { notIn: ["CANCELLED", "NO_SHOW"] },
+          startTime: {
+            gte: new Date(startDate.getTime() - 12 * 60 * 60 * 1000),
+            lte: new Date(endDate.getTime() + 12 * 60 * 60 * 1000),
+          },
+        },
+      });
+      if (conflict) {
+        const aStart = conflict.startTime.getTime();
+        const aEnd = aStart + conflict.durationMinutes * 60 * 1000;
+        if (aStart < endDate.getTime() && aEnd > startDate.getTime()) {
+          return {
+            success: false,
+            error: "Time slot is no longer available. Please suggest another time.",
+          };
+        }
+      }
+
+      const created = await this.prisma.appointment.create({
+        data: {
+          businessId,
+          callId: callId || null,
+          title,
+          customerName: (String(args.customerName ?? "").trim()) || null,
+          customerPhone: (String(args.customerPhone ?? "").trim()) || null,
+          customerEmail: (String(args.customerEmail ?? "").trim()) || null,
+          serviceName: (String(args.serviceName ?? "").trim()) || null,
+          notes: (String(args.notes ?? "").trim()) || null,
+          startTime: startDate,
+          durationMinutes: duration,
+          status: "SCHEDULED",
+        },
+      });
+
+      this.logger.log(`AI booked appointment id=${created.id} for businessId=${businessId} at ${startDate.toISOString()}.`);
+
+      return {
+        success: true,
+        appointmentId: created.id,
+        confirmedStart: startDate.toISOString(),
+        durationMinutes: duration,
+        message: "Appointment booked successfully. Confirm the details verbally with the caller.",
+      };
+    }
+
+    return { success: false, error: `Unknown tool: ${toolName}` };
+  }
+
   private resolveTwilioCredentials(telephonySettings: unknown) {
     const telephony = readTelephonySettings(telephonySettings);
     const accountSid =
@@ -1245,6 +1662,7 @@ export class TelephonyService {
       `Phone number: ${business.phoneNumber || "No phone number configured yet."}`,
       `Current local business date: ${businessDate}.`,
       `Business timezone: ${business.timezone || "America/Toronto"}.`,
+      `Current UTC datetime (use this as reference for date/time math): ${new Date().toISOString()}.`,
       `Call handling mode: ${callHandlingMode}.`,
       `Answer mode: ${answerMode}.`,
       `After-hours behavior: ${afterHoursMessage}`,
@@ -1257,6 +1675,17 @@ export class TelephonyService {
       "Your tone should be calm, confident, warm, and conversion-focused.",
       "Your goal is to convert interest into a clear next step such as an order request, booking request, callback request, or confirmed follow-up.",
       "Be helpful and persuasive, but never pushy, robotic, or misleading.",
+      // ── APPOINTMENT BOOKING (highest priority outcome) ──────────────────────
+      "APPOINTMENT BOOKING IS YOUR PRIMARY OBJECTIVE. Regardless of what the caller asks about — pricing, services, info, complaints, or just general questions — you must steer the conversation toward booking a follow-up appointment, consultation, or meeting. Every call should end with either a booked appointment or a clear reason it could not be booked.",
+      "Use the available function tools to handle booking: 'check_availability' (verify a time slot is free), 'suggest_available_slots' (offer multiple open times), and 'book_appointment' (create the booking after caller confirms).",
+      "Booking workflow: (1) After understanding what the caller needs, propose a short follow-up appointment ('Would you like me to set up a quick 30-minute call with our team this week?'). (2) Get their preferred day/time. (3) VERIFY the proposed time is within the business office hours listed above — if outside, politely suggest an alternative time within hours. (4) Call check_availability with that time. (5) If free, confirm with caller and call book_appointment. (6) If busy, call suggest_available_slots and offer 2-3 alternatives. (7) Always confirm the booked time verbally before ending the call.",
+      "STRICT RULE: NEVER propose or book an appointment outside the office hours listed in this prompt. If the office hours say 'Saturday: Closed' or 'Sunday: Closed', do not offer those days. If hours are '9 AM – 6 PM', do not offer times before 9 AM or after 5:30 PM (so a 30-min slot ends within hours). If the caller insists on a time outside hours, politely explain the office is closed at that time and suggest the nearest valid alternative.",
+      `When converting natural-language times to ISO 8601 for the tools, use the business timezone (${business.timezone || "America/Toronto"}). For example, "Tuesday at 2pm" becomes a full ISO datetime with the appropriate UTC offset for that date in that zone. Today's date in the business timezone is provided above — use it as your reference for "tomorrow", "next Tuesday", etc.`,
+      "Default appointment duration is 30 minutes unless the caller indicates a longer need or the relevant service has its own duration mentioned in the knowledge base.",
+      "Before calling book_appointment, ensure you have collected the caller's name and phone number. Include them in the booking.",
+      "After successfully booking, read back the date, time, and duration to confirm with the caller, then wrap up the call politely.",
+      "If the caller declines to book right now, still capture their lead info and offer to send them a follow-up. Do not pressure them.",
+      // ────────────────────────────────────────────────────────────────────────
       "When the business is food-related, think like a strong counter-sales person: help the caller choose, move the order forward confidently, and keep the conversation commercially useful.",
       "When appropriate, guide the caller toward the best next action using only the saved business data.",
       "Answer quickly after the caller finishes, without long pauses.",
@@ -2071,6 +2500,8 @@ export class TelephonyService {
               model: session.model,
               instructions: session.instructions,
               output_modalities: ["audio"],
+              tools: APPOINTMENT_TOOLS,
+              tool_choice: "auto",
               audio: {
                 input: {
                   format: {
@@ -2173,6 +2604,59 @@ export class TelephonyService {
           responseInFlight = false;
           clearResponseRecoveryTimer();
           callerSpeechPending = false;
+        }
+
+        // ── Handle AI Function Calls (appointment tools) ──────────────────────
+        if (event.type === "response.function_call_arguments.done") {
+          const callIdEvt = typeof event.call_id === "string" ? event.call_id : "";
+          const toolName = typeof event.name === "string" ? event.name : "";
+          const argsRaw = typeof event.arguments === "string" ? event.arguments : "{}";
+          let toolArgs: Record<string, unknown> = {};
+          try {
+            toolArgs = JSON.parse(argsRaw);
+          } catch {
+            toolArgs = {};
+          }
+
+          this.logger.log(
+            `AI tool call businessId=${activeBusinessId} tool=${toolName} args=${argsRaw}`,
+          );
+
+          let toolResult: Record<string, unknown> = { error: "Unknown tool." };
+          try {
+            toolResult = await this.executeAppointmentTool(
+              toolName,
+              toolArgs,
+              activeBusinessId,
+              currentCallId,
+            );
+          } catch (err) {
+            toolResult = {
+              success: false,
+              error: err instanceof Error ? err.message : "Tool execution failed.",
+            };
+          }
+
+          // Send tool output back to the AI, then trigger continuation
+          if (openAiSocket && openAiSocket.readyState === WebSocket.OPEN && callIdEvt) {
+            openAiSocket.send(
+              JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                  type: "function_call_output",
+                  call_id: callIdEvt,
+                  output: JSON.stringify(toolResult),
+                },
+              }),
+            );
+            // Ask the model to continue with the tool result
+            openAiSocket.send(
+              JSON.stringify({
+                type: "response.create",
+              }),
+            );
+            responseInFlight = true;
+          }
         }
 
         if (event.type === "input_audio_buffer.speech_started") {

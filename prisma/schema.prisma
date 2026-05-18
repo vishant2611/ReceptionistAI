@@ -53,6 +53,14 @@ enum SubscriptionStatus {
   PAUSED
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
 model User {
   id          String           @id @default(cuid())
   email       String           @unique
@@ -88,6 +96,7 @@ model Business {
   updatedAt          DateTime            @updatedAt
   members            BusinessMember[]
   calls              Call[]
+  appointments       Appointment[]
   subscription       Subscription?
 }
 
@@ -121,7 +130,30 @@ model Call {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  businessId      String
+  callId          String?
+  title           String
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+  serviceName     String?
+  notes           String?
+  startTime       DateTime
+  durationMinutes Int               @default(30)
+  status          AppointmentStatus @default(SCHEDULED)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  call     Call?    @relation(fields: [callId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, startTime])
 }
 
 model Subscription {

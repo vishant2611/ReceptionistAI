@@ -289,7 +289,15 @@ function extractKnowledgeBase(value: unknown) {
         .filter((s) => s && typeof s === "object")
         .map((s) => {
           const r = s as Record<string, unknown>;
-          return { id: String(r.id ?? ""), serviceName: String(r.serviceName ?? ""), description: String(r.description ?? ""), whoItsFor: String(r.whoItsFor ?? ""), problemItSolves: String(r.problemItSolves ?? ""), isActive: r.isActive !== false };
+          return {
+            id: String(r.id ?? ""),
+            serviceName: String(r.serviceName ?? ""),
+            description: String(r.description ?? ""),
+            whoItsFor: String(r.whoItsFor ?? ""),
+            problemItSolves: String(r.problemItSolves ?? ""),
+            defaultDurationMinutes: Number(r.defaultDurationMinutes ?? 0) || 0,
+            isActive: r.isActive !== false,
+          };
         })
         .filter((s) => s.id && s.serviceName)
     : [];

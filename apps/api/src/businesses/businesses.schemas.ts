@@ -182,6 +182,7 @@ export const kbServiceSchema = z.object({
   description: z.string().optional().default(""),
   whoItsFor: z.string().optional().default(""),
   problemItSolves: z.string().optional().default(""),
+  defaultDurationMinutes: z.coerce.number().int().min(0).max(720).optional().default(0),
   isActive: z.boolean().default(true),
 });
 

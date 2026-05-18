@@ -81,7 +81,7 @@ type BusinessData = {
       faqs: Array<{ id: string; question: string; answer: string; isActive: boolean }>;
       objections: Array<{ id: string; objection: string; response: string; isActive: boolean }>;
       leadCaptureFlow: Array<{ id: string; question: string; fieldName: string; order: number; isRequired: boolean }>;
-      services: Array<{ id: string; serviceName: string; description: string; whoItsFor: string; problemItSolves: string; isActive: boolean }>;
+      services: Array<{ id: string; serviceName: string; description: string; whoItsFor: string; problemItSolves: string; defaultDurationMinutes: number; isActive: boolean }>;
       differentiators: string;
     };
     conversationGoal?: string;

@@ -10,7 +10,7 @@ type Props = { businessId?: string };
 type KbFaq = { id: string; question: string; answer: string; isActive: boolean };
 type KbObjection = { id: string; objection: string; response: string; isActive: boolean };
 type KbLeadQuestion = { id: string; question: string; fieldName: string; order: number; isRequired: boolean };
-type KbService = { id: string; serviceName: string; description: string; whoItsFor: string; problemItSolves: string; isActive: boolean };
+type KbService = { id: string; serviceName: string; description: string; whoItsFor: string; problemItSolves: string; defaultDurationMinutes: number; isActive: boolean };
 
 const FIELD_NAME_OPTIONS = [
   { value: "name", label: "Caller Name" },
@@ -126,9 +126,9 @@ export function PortalKnowledgeBasePage({ businessId = "" }: Props) {
 
   // ── Service helpers ──────────────────────────────────────────────────────────
   function addService() {
-    setServices([...services, { id: uid(), serviceName: "", description: "", whoItsFor: "", problemItSolves: "", isActive: true }]);
+    setServices([...services, { id: uid(), serviceName: "", description: "", whoItsFor: "", problemItSolves: "", defaultDurationMinutes: 30, isActive: true }]);
   }
-  function updateService(id: string, field: keyof KbService, value: string | boolean) {
+  function updateService(id: string, field: keyof KbService, value: string | boolean | number) {
     setServices(services.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
   }
   function removeService(id: string) {
@@ -201,6 +201,20 @@ export function PortalKnowledgeBasePage({ businessId = "" }: Props) {
                   <label className="form-label">Problem It Solves</label>
                   <input className="form-input" placeholder="e.g. Missed calls losing leads 24/7" value={s.problemItSolves} onChange={(e) => updateService(s.id, "problemItSolves", e.target.value)} />
                 </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Typical Appointment Duration (minutes)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min={0}
+                  max={720}
+                  placeholder="30"
+                  value={s.defaultDurationMinutes || ""}
+                  onChange={(e) => updateService(s.id, "defaultDurationMinutes", Number(e.target.value) || 0)}
+                  style={{ maxWidth: 180 }}
+                />
+                <small style={{ color: "var(--muted)", fontSize: "0.8rem" }}>The AI uses this to know how long to block for callers asking about this service. Leave blank or 0 to use the business default.</small>
               </div>
             </div>
           ))}

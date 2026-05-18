@@ -10,6 +10,8 @@ import { BusinessesController } from "./businesses/businesses.controller";
 import { BusinessesService } from "./businesses/businesses.service";
 import { TelephonyController } from "./telephony/telephony.controller";
 import { TelephonyService } from "./telephony/telephony.service";
+import { AppointmentsController } from "./appointments/appointments.controller";
+import { AppointmentsService } from "./appointments/appointments.service";
 
 @Module({
   imports: [
@@ -19,7 +21,19 @@ import { TelephonyService } from "./telephony/telephony.service";
       validate: validateEnv,
     }),
   ],
-  controllers: [HealthController, AuthController, BusinessesController, TelephonyController],
-  providers: [PrismaService, AuthService, BusinessesService, TelephonyService],
+  controllers: [
+    HealthController,
+    AuthController,
+    BusinessesController,
+    TelephonyController,
+    AppointmentsController,
+  ],
+  providers: [
+    PrismaService,
+    AuthService,
+    BusinessesService,
+    TelephonyService,
+    AppointmentsService,
+  ],
 })
 export class AppModule {}
