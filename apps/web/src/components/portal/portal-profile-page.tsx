@@ -401,7 +401,7 @@ export function PortalProfilePage({ businessId = "" }: Props) {
         </div>
       </section>
 
-      <PasswordChangeForm />
+      <PasswordChangeForm email={portal.session?.email || ""} />
     </PortalShell>
   );
 }
