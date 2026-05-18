@@ -357,7 +357,7 @@ const APPOINTMENT_TOOLS = [
         title: {
           type: "string",
           description:
-            "Short descriptive title, e.g. 'AI Strategy Call with John Smith from GenX Restaurant'.",
+            "VERY SHORT title — max 25 characters. Use the caller's first name and a 1-2 word topic. Examples: 'Call with John', 'Strategy — Sarah', 'Demo with Mike'. Do NOT include company names, full names, or service descriptions here — put those in the notes field.",
         },
         startTime: {
           type: "string",
@@ -1782,6 +1782,7 @@ export class TelephonyService {
       "STRICT RULE: NEVER propose or book an appointment outside the office hours listed in this prompt. If the office hours say 'Saturday: Closed' or 'Sunday: Closed', do not offer those days. If hours are '9 AM – 6 PM', do not offer times before 9 AM or after 5:30 PM (so a 30-min slot ends within hours). If the caller insists on a time outside hours, politely explain the office is closed at that time and suggest the nearest valid alternative.",
       `CRITICAL — ISO time format: When converting natural-language times to ISO 8601 for the tools, ALWAYS include the UTC offset for the business timezone (${business.timezone || "America/Toronto"}). For example, "Tuesday May 21st 2026 at 2 PM" in Eastern Daylight Time becomes "2026-05-21T14:00:00-04:00" (EDT is -04:00 March-November, EST is -05:00 November-March). NEVER send a time without a timezone offset — that causes booking errors. Today's date in the business timezone is provided above.`,
       "When the user says a duration like '1 hour' set durationMinutes to 60. '30 minutes' = 30. '90 minutes' or 'an hour and a half' = 90. Do NOT confuse hours and minutes.",
+      "Booking titles must be SHORT — max 25 characters. Use the caller's first name plus 1-2 words for topic. Example: 'Call with John' or 'Demo — Sarah'. Put full names, company, and service details in the notes field, NEVER in the title. Long titles break the calendar layout.",
       "Default appointment duration is 30 minutes unless the caller indicates a longer need or the relevant service has its own duration mentioned in the knowledge base.",
       "Before calling book_appointment, ensure you have collected the caller's name and phone number. Include them in the booking.",
       "After successfully booking, read back the date, time, and duration to confirm with the caller, then wrap up the call politely.",

@@ -355,6 +355,21 @@ export function PortalAppointmentsPage({ businessId = "" }: Props) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
 
+  // Holiday lookup
+  const holidayMap = new Map<string, string>();
+  const officeSchedule = (business as unknown as { officeSchedule?: { holidays?: Array<{ date: string; label: string }> } }).officeSchedule;
+  if (officeSchedule?.holidays) {
+    for (const h of officeSchedule.holidays) {
+      holidayMap.set(h.date, h.label || "Holiday");
+    }
+  }
+  function dateKey(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
   return (
     <PortalShell
       active="appointments"
@@ -394,13 +409,17 @@ export function PortalAppointmentsPage({ businessId = "" }: Props) {
               const key = `${cell.date.getFullYear()}-${cell.date.getMonth()}-${cell.date.getDate()}`;
               const dayAppts = apptsByDate.get(key) ?? [];
               const isToday = isSameDay(cell.date, today);
+              const holidayLabel = holidayMap.get(dateKey(cell.date));
+              const isHoliday = Boolean(holidayLabel);
               return (
                 <div
                   key={idx}
-                  className={`appt-day-cell${cell.inMonth ? "" : " out-of-month"}${isToday ? " today" : ""}`}
+                  className={`appt-day-cell${cell.inMonth ? "" : " out-of-month"}${isToday ? " today" : ""}${isHoliday ? " holiday" : ""}`}
                   onClick={() => openCreate(new Date(cell.date))}
+                  title={holidayLabel || ""}
                 >
                   <div className="appt-day-number">{cell.date.getDate()}</div>
+                  {isHoliday && <div className="appt-day-holiday-label">{holidayLabel}</div>}
                   <div className="appt-day-events">
                     {dayAppts.slice(0, 3).map((a) => (
                       <button

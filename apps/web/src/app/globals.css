@@ -2253,7 +2253,7 @@ img {
 
 .appt-month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   grid-auto-rows: minmax(112px, auto);
 }
 
@@ -2267,7 +2267,38 @@ img {
   flex-direction: column;
   gap: 4px;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   transition: background 0.12s;
+}
+
+.appt-day-cell.holiday {
+  background: #fff5f5;
+  position: relative;
+}
+
+.appt-day-cell.holiday::after {
+  content: "🎄";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.appt-day-cell.holiday .appt-day-number {
+  color: #c93b3b;
+}
+
+.appt-day-holiday-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #c93b3b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .appt-day-cell:nth-child(7n) {
@@ -2305,6 +2336,8 @@ img {
   flex-direction: column;
   gap: 3px;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   overflow: hidden;
 }
 
@@ -2325,6 +2358,17 @@ img {
   background: #e8eeff;
   color: #1e3a8a;
   transition: filter 0.15s;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.appt-day-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .appt-day-event:hover {
@@ -2334,11 +2378,6 @@ img {
 .appt-day-event-time {
   font-weight: 700;
   flex-shrink: 0;
-}
-
-.appt-day-event-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .appt-day-event-more {
