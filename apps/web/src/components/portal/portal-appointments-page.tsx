@@ -580,12 +580,26 @@ export function PortalAppointmentsPage({ businessId = "" }: Props) {
                 <div className="appt-call-info">
                   <strong>📞 Linked Call</strong>
                   {editingAppt.call.summary && <p><em>Summary:</em> {editingAppt.call.summary}</p>}
-                  {editingAppt.call.recordingUrl && (
-                    <p>
-                      <a href={editingAppt.call.recordingUrl} target="_blank" rel="noopener noreferrer">
-                        🎙️ Play recording
-                      </a>
-                    </p>
+                  {editingAppt.call.recordingUrl && editingAppt.call.id && (
+                    <>
+                      <p>
+                        <a
+                          href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/telephony/recordings/${editingAppt.call.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          🎙️ Play recording
+                        </a>
+                      </p>
+                      <audio
+                        controls
+                        preload="none"
+                        src={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/telephony/recordings/${editingAppt.call.id}`}
+                        style={{ width: "100%", marginTop: 8 }}
+                      >
+                        Your browser does not support audio playback.
+                      </audio>
+                    </>
                   )}
                 </div>
               )}

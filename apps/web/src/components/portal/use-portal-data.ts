@@ -85,6 +85,11 @@ type BusinessData = {
       differentiators: string;
     };
     conversationGoal?: string;
+    officeSchedule?: {
+      timezone: string;
+      days: Partial<Record<"monday"|"tuesday"|"wednesday"|"thursday"|"friday"|"saturday"|"sunday", { closed: boolean; open: string; close: string }>>;
+      holidays: Array<{ date: string; label: string }>;
+    };
   };
 };
 

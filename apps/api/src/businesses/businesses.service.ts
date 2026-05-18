@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { BusinessCategory, UserRole } from "@prisma/client";
+import { BusinessCategory, Prisma, UserRole } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { BusinessMemberCreateInput } from "./business-members.schemas";
@@ -309,6 +309,89 @@ function extractKnowledgeBase(value: unknown) {
     services,
     differentiators: typeof record.differentiators === "string" ? record.differentiators : "",
   };
+}
+
+// ─── Office Schedule extractor + text generator ───────────────────────────────
+
+const DAY_KEYS = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] as const;
+type DayKey = (typeof DAY_KEYS)[number];
+
+function extractOfficeSchedule(value: unknown) {
+  const rules = readBusinessRules(value);
+  const sched = rules.officeSchedule;
+  if (!sched || typeof sched !== "object" || Array.isArray(sched)) {
+    return { timezone: "America/Toronto", days: {}, holidays: [] };
+  }
+  const record = sched as Record<string, unknown>;
+  const days: Record<string, { closed: boolean; open: string; close: string }> = {};
+  const rawDays = (record.days && typeof record.days === "object" && !Array.isArray(record.days)
+    ? (record.days as Record<string, unknown>)
+    : {});
+  for (const day of DAY_KEYS) {
+    const entry = rawDays[day];
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const r = entry as Record<string, unknown>;
+      days[day] = {
+        closed: r.closed === true,
+        open: typeof r.open === "string" ? r.open : "",
+        close: typeof r.close === "string" ? r.close : "",
+      };
+    }
+  }
+  const holidays = Array.isArray(record.holidays)
+    ? record.holidays
+        .filter((h) => h && typeof h === "object")
+        .map((h) => {
+          const r = h as Record<string, unknown>;
+          return {
+            date: String(r.date ?? ""),
+            label: String(r.label ?? ""),
+          };
+        })
+        .filter((h) => /^\d{4}-\d{2}-\d{2}$/.test(h.date))
+    : [];
+  return {
+    timezone: typeof record.timezone === "string" ? record.timezone : "America/Toronto",
+    days,
+    holidays,
+  };
+}
+
+function formatHourLabel(hhmm: string): string {
+  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return hhmm;
+  let h = Number(m[1]);
+  const min = m[2];
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 === 0 ? 12 : h % 12;
+  return `${h}:${min} ${ampm}`;
+}
+
+function generateOfficeHoursText(schedule: { days?: Partial<Record<DayKey, { closed?: boolean; open?: string; close?: string }>>; holidays?: Array<{ date: string; label?: string }>; timezone?: string }): string[] {
+  const dayLabels: Record<DayKey, string> = {
+    monday: "Monday",
+    tuesday: "Tuesday",
+    wednesday: "Wednesday",
+    thursday: "Thursday",
+    friday: "Friday",
+    saturday: "Saturday",
+    sunday: "Sunday",
+  };
+  const lines: string[] = [];
+  for (const day of DAY_KEYS) {
+    const info = schedule.days?.[day];
+    if (!info || info.closed || !info.open || !info.close) {
+      lines.push(`${dayLabels[day]}: Closed`);
+    } else {
+      lines.push(`${dayLabels[day]}: ${formatHourLabel(info.open)} – ${formatHourLabel(info.close)}`);
+    }
+  }
+  if (schedule.holidays && schedule.holidays.length > 0) {
+    for (const h of schedule.holidays) {
+      lines.push(`Holiday — ${h.date}${h.label ? ` (${h.label})` : ""}: Closed`);
+    }
+  }
+  return lines;
 }
 
 function extractConversationGoal(value: unknown): string {
@@ -888,6 +971,7 @@ export class BusinessesService {
         pharmacyCallbackRequests: extractPharmacyCallbackRequests(business.answeringRules),
         knowledgeBase: extractKnowledgeBase(business.answeringRules),
         conversationGoal: extractConversationGoal(business.answeringRules),
+        officeSchedule: extractOfficeSchedule(business.answeringRules),
         billingOverview,
       },
     };
@@ -966,6 +1050,19 @@ export class BusinessesService {
       throw new NotFoundException("Business not found.");
     }
 
+    // If structured officeSchedule is provided, generate the legacy text array
+    // and merge it into answeringRules JSON. Both formats kept for AI compat.
+    let finalOfficeHours = input.officeHours;
+    let answeringRulesUpdate: Record<string, unknown> | undefined;
+    if (input.officeSchedule) {
+      finalOfficeHours = generateOfficeHoursText(input.officeSchedule);
+      const previousRules = readBusinessRules(existing.answeringRules);
+      answeringRulesUpdate = {
+        ...previousRules,
+        officeSchedule: input.officeSchedule,
+      };
+    }
+
     const business = await this.prisma.business.update({
       where: { id: businessId },
       data: {
@@ -976,7 +1073,10 @@ export class BusinessesService {
         description: input.description.trim(),
         servicesSummary: input.servicesSummary.trim(),
         priceListSummary: input.priceListSummary.trim() || null,
-        officeHours: input.officeHours,
+        officeHours: finalOfficeHours,
+        ...(answeringRulesUpdate
+          ? { answeringRules: answeringRulesUpdate as Prisma.InputJsonValue }
+          : {}),
       },
     });
 
@@ -992,6 +1092,7 @@ export class BusinessesService {
         servicesSummary: business.servicesSummary,
         priceListSummary: business.priceListSummary,
         officeHours: business.officeHours,
+        officeSchedule: extractOfficeSchedule(business.answeringRules),
       },
     };
   }

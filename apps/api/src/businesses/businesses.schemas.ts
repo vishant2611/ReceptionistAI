@@ -66,6 +66,35 @@ export const businessBillingSettingsSchema = z.object({
 
 export type BusinessBillingSettingsInput = z.infer<typeof businessBillingSettingsSchema>;
 
+export const dayScheduleSchema = z.object({
+  closed: z.boolean().default(false),
+  open: z.string().optional().default(""), // "HH:mm" 24-hour, e.g. "09:00"
+  close: z.string().optional().default(""), // "HH:mm" 24-hour
+});
+
+export const holidayEntrySchema = z.object({
+  date: z.string().min(10).max(10), // YYYY-MM-DD
+  label: z.string().max(160).optional().default(""),
+});
+
+export const officeScheduleSchema = z.object({
+  timezone: z.string().min(2).optional().default("America/Toronto"),
+  days: z
+    .object({
+      monday: dayScheduleSchema.optional(),
+      tuesday: dayScheduleSchema.optional(),
+      wednesday: dayScheduleSchema.optional(),
+      thursday: dayScheduleSchema.optional(),
+      friday: dayScheduleSchema.optional(),
+      saturday: dayScheduleSchema.optional(),
+      sunday: dayScheduleSchema.optional(),
+    })
+    .default({}),
+  holidays: z.array(holidayEntrySchema).default([]),
+});
+
+export type OfficeScheduleInput = z.infer<typeof officeScheduleSchema>;
+
 export const businessProfileUpdateSchema = z.object({
   businessName: z.string().min(2),
   phoneNumber: z.string().min(7),
@@ -75,6 +104,7 @@ export const businessProfileUpdateSchema = z.object({
   servicesSummary: z.string().optional().default(""),
   priceListSummary: z.string().optional().default(""),
   officeHours: z.array(z.string()).default([]),
+  officeSchedule: officeScheduleSchema.optional(),
 });
 
 export type BusinessProfileUpdateInput = z.infer<typeof businessProfileUpdateSchema>;

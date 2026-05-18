@@ -176,31 +176,109 @@ function parseOfficeHours(officeHours: unknown): Record<number, DayHours> {
   return result;
 }
 
+// Extract weekday/hour/minute in a specific timezone (server-timezone-safe).
+function getLocalDateParts(date: Date, timezone: string) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
+  const weekdayShort = get("weekday").toLowerCase(); // e.g. "mon"
+  const hour = Number(get("hour"));
+  const minute = Number(get("minute"));
+  return {
+    dayIdx: DAY_NAME_TO_INDEX[weekdayShort] ?? new Date(date).getDay(),
+    hour,
+    minute,
+  };
+}
+
+// Build day hours map from structured schedule (if available)
+type StructuredSchedule = {
+  timezone?: string;
+  days?: Record<string, { closed?: boolean; open?: string; close?: string }>;
+  holidays?: Array<{ date?: string; label?: string }>;
+};
+
+function dayKeyForIndex(idx: number): string {
+  return ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"][idx];
+}
+
+function getStructuredDayHours(schedule: StructuredSchedule | null, dayIdx: number): DayHours | null {
+  if (!schedule || !schedule.days) return null;
+  const key = dayKeyForIndex(dayIdx);
+  const entry = schedule.days[key];
+  if (!entry) return null;
+  if (entry.closed) return { closed: true };
+  const openMin = entry.open ? hhmmToMinutes(entry.open) : null;
+  const closeMin = entry.close ? hhmmToMinutes(entry.close) : null;
+  if (openMin === null || closeMin === null) return null;
+  return { closed: false, openMin, closeMin };
+}
+
+function hhmmToMinutes(hhmm: string): number | null {
+  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function getDateStringInTimezone(date: Date, timezone: string): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 // Returns null if within hours, otherwise an error message.
 function checkWithinOfficeHours(
   startTime: Date,
   durationMinutes: number,
   officeHours: unknown,
+  timezone: string = "America/Toronto",
+  structuredSchedule: StructuredSchedule | null = null,
 ): string | null {
-  const parsed = parseOfficeHours(officeHours);
-  if (Object.keys(parsed).length === 0) {
-    // If no parseable office hours, don't block — let AI/prompt handle it.
-    return null;
+  // Use the BUSINESS's timezone, not the server's
+  const local = getLocalDateParts(startTime, timezone);
+
+  // ── Holiday Check (if structured schedule has holidays) ──────────────────
+  if (structuredSchedule?.holidays && structuredSchedule.holidays.length > 0) {
+    const dateStr = getDateStringInTimezone(startTime, timezone);
+    const holiday = structuredSchedule.holidays.find((h) => h.date === dateStr);
+    if (holiday) {
+      return `The business is closed on ${dateStr}${holiday.label ? ` for ${holiday.label}` : ""}. Please suggest a different day.`;
+    }
   }
 
-  const dayIdx = startTime.getDay();
-  const dayInfo = parsed[dayIdx];
+  // ── Determine day hours: prefer structured, fall back to text-parsed ─────
+  let dayInfo: DayHours | null = null;
+  if (structuredSchedule) {
+    dayInfo = getStructuredDayHours(structuredSchedule, local.dayIdx);
+  }
   if (!dayInfo) {
-    // Day not listed — don't block, prompt will guide AI
-    return null;
+    const parsed = parseOfficeHours(officeHours);
+    if (Object.keys(parsed).length === 0) return null;
+    dayInfo = parsed[local.dayIdx] ?? null;
+    if (!dayInfo) return null;
   }
 
   if (dayInfo.closed) {
-    const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dayIdx];
+    const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][local.dayIdx];
     return `The business is closed on ${dayName}. Please suggest a different day.`;
   }
 
-  const startMin = startTime.getHours() * 60 + startTime.getMinutes();
+  const startMin = local.hour * 60 + local.minute;
   const endMin = startMin + durationMinutes;
 
   if (dayInfo.openMin !== undefined && startMin < dayInfo.openMin) {
@@ -1224,12 +1302,18 @@ export class TelephonyService {
       return { success: false, error: "Missing business context." };
     }
 
-    // Load business once (for officeHours + timezone)
+    // Load business once (for officeHours + timezone + structured schedule)
     const businessForHours = await this.prisma.business.findUnique({
       where: { id: businessId },
-      select: { officeHours: true, timezone: true },
+      select: { officeHours: true, timezone: true, answeringRules: true },
     });
     const officeHours = businessForHours?.officeHours ?? [];
+    const rulesObj = (businessForHours?.answeringRules && typeof businessForHours.answeringRules === "object" && !Array.isArray(businessForHours.answeringRules)
+      ? (businessForHours.answeringRules as Record<string, unknown>)
+      : {});
+    const structuredSchedule = (rulesObj.officeSchedule && typeof rulesObj.officeSchedule === "object" && !Array.isArray(rulesObj.officeSchedule)
+      ? (rulesObj.officeSchedule as StructuredSchedule)
+      : null);
 
     if (toolName === "check_availability") {
       const startIso = String(args.startTime ?? "");
@@ -1246,7 +1330,7 @@ export class TelephonyService {
       const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
 
       // ── Office Hours Check ──
-      const hoursError = checkWithinOfficeHours(startDate, duration, officeHours);
+      const hoursError = checkWithinOfficeHours(startDate, duration, officeHours, businessForHours?.timezone || "America/Toronto", structuredSchedule);
       if (hoursError) {
         return {
           success: true,
@@ -1376,7 +1460,7 @@ export class TelephonyService {
       }
 
       // ── Office Hours Check (defensive) ──
-      const bookingHoursError = checkWithinOfficeHours(startDate, duration, officeHours);
+      const bookingHoursError = checkWithinOfficeHours(startDate, duration, officeHours, businessForHours?.timezone || "America/Toronto", structuredSchedule);
       if (bookingHoursError) {
         return {
           success: false,
@@ -1627,6 +1711,21 @@ export class TelephonyService {
     const officeHoursInstruction = officeHours
       ? officeHours
       : "The exact operating hours are still being finalized in the portal, so offer to capture a callback request if needed";
+    // Holidays from structured schedule (if present)
+    const officeScheduleRaw = rules.officeSchedule;
+    const holidaysList = (officeScheduleRaw && typeof officeScheduleRaw === "object" && !Array.isArray(officeScheduleRaw)
+      && Array.isArray((officeScheduleRaw as Record<string, unknown>).holidays)
+      ? ((officeScheduleRaw as Record<string, unknown>).holidays as Array<Record<string, unknown>>)
+      : []
+    )
+      .map((h) => ({
+        date: String(h.date ?? ""),
+        label: String(h.label ?? ""),
+      }))
+      .filter((h) => /^\d{4}-\d{2}-\d{2}$/.test(h.date));
+    const holidaysInstruction = holidaysList.length > 0
+      ? `Closed holidays (do NOT book on these dates): ${holidaysList.map((h) => `${h.date}${h.label ? ` (${h.label})` : ""}`).join("; ")}.`
+      : "";
     const emergencyMessage =
       typeof rules.emergencyMessage === "string" && rules.emergencyMessage.trim().length > 0
         ? rules.emergencyMessage.trim()
@@ -1658,6 +1757,7 @@ export class TelephonyService {
       `Structured menu items: ${menuCatalog || "No structured menu items saved yet."}`,
       `Pricing or fees: ${business.priceListSummary || "If explicit pricing is missing, say the team will confirm the exact amount."}`,
       `Operating hours: ${officeHoursInstruction}.`,
+      holidaysInstruction,
       `Address: ${business.address || "No address configured yet."}`,
       `Phone number: ${business.phoneNumber || "No phone number configured yet."}`,
       `Current local business date: ${businessDate}.`,
@@ -1680,7 +1780,8 @@ export class TelephonyService {
       "Use the available function tools to handle booking: 'check_availability' (verify a time slot is free), 'suggest_available_slots' (offer multiple open times), and 'book_appointment' (create the booking after caller confirms).",
       "Booking workflow: (1) After understanding what the caller needs, propose a short follow-up appointment ('Would you like me to set up a quick 30-minute call with our team this week?'). (2) Get their preferred day/time. (3) VERIFY the proposed time is within the business office hours listed above — if outside, politely suggest an alternative time within hours. (4) Call check_availability with that time. (5) If free, confirm with caller and call book_appointment. (6) If busy, call suggest_available_slots and offer 2-3 alternatives. (7) Always confirm the booked time verbally before ending the call.",
       "STRICT RULE: NEVER propose or book an appointment outside the office hours listed in this prompt. If the office hours say 'Saturday: Closed' or 'Sunday: Closed', do not offer those days. If hours are '9 AM – 6 PM', do not offer times before 9 AM or after 5:30 PM (so a 30-min slot ends within hours). If the caller insists on a time outside hours, politely explain the office is closed at that time and suggest the nearest valid alternative.",
-      `When converting natural-language times to ISO 8601 for the tools, use the business timezone (${business.timezone || "America/Toronto"}). For example, "Tuesday at 2pm" becomes a full ISO datetime with the appropriate UTC offset for that date in that zone. Today's date in the business timezone is provided above — use it as your reference for "tomorrow", "next Tuesday", etc.`,
+      `CRITICAL — ISO time format: When converting natural-language times to ISO 8601 for the tools, ALWAYS include the UTC offset for the business timezone (${business.timezone || "America/Toronto"}). For example, "Tuesday May 21st 2026 at 2 PM" in Eastern Daylight Time becomes "2026-05-21T14:00:00-04:00" (EDT is -04:00 March-November, EST is -05:00 November-March). NEVER send a time without a timezone offset — that causes booking errors. Today's date in the business timezone is provided above.`,
+      "When the user says a duration like '1 hour' set durationMinutes to 60. '30 minutes' = 30. '90 minutes' or 'an hour and a half' = 90. Do NOT confuse hours and minutes.",
       "Default appointment duration is 30 minutes unless the caller indicates a longer need or the relevant service has its own duration mentioned in the knowledge base.",
       "Before calling book_appointment, ensure you have collected the caller's name and phone number. Include them in the booking.",
       "After successfully booking, read back the date, time, and duration to confirm with the caller, then wrap up the call politely.",
