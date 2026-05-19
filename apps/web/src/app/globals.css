@@ -2128,6 +2128,54 @@ img {
   .holiday-add-date, .holiday-add-label { width: 100%; }
 }
 
+/* ── Calendar Integration ────────────────────────────────────────────────────── */
+.calendar-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.calendar-card-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.calendar-card-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.calendar-card-text {
+  flex: 1 1 240px;
+  display: grid;
+  gap: 4px;
+}
+
+.calendar-card-text strong {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.calendar-card-text span {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.calendar-connected-badge {
+  color: #15803d !important;
+  font-weight: 600;
+}
+
+.calendar-card-actions {
+  flex-shrink: 0;
+}
+
 /* ── Appointments Calendar ───────────────────────────────────────────────────── */
 .appt-toolbar {
   display: flex;

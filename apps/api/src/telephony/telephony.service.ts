@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, ServiceUnavailableException } fr
 import { CallStatus } from "@prisma/client";
 import { URL } from "node:url";
 import { PrismaService } from "../prisma/prisma.service";
+import { CalendarService } from "../calendar/calendar.service";
 import WebSocket from "ws";
 
 type TwilioInboundPayload = {
@@ -1254,7 +1255,10 @@ function resolveMedicalMode(business: { category: string; medicalModeEnabled: bo
 export class TelephonyService {
   private readonly logger = new Logger(TelephonyService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly calendarService: CalendarService,
+  ) {}
 
   private async findBusinessByTwilioNumber(twilioNumber: string | null | undefined) {
     const normalizedTarget = normalizePhoneLookup(twilioNumber);
@@ -1359,9 +1363,18 @@ export class TelephonyService {
         return aStart < endDate.getTime() && aEnd > startDate.getTime();
       });
 
+      // Also check the external Microsoft Calendar for busy times
+      let externalBusy = false;
+      try {
+        externalBusy = await this.calendarService.isTimeBusy(businessId, startDate, endDate);
+      } catch {
+        externalBusy = false;
+      }
+
+      const available = conflicts.length === 0 && !externalBusy;
       return {
         success: true,
-        available: conflicts.length === 0,
+        available,
         proposedStart: startDate.toISOString(),
         proposedEnd: endDate.toISOString(),
         durationMinutes: duration,
@@ -1370,6 +1383,10 @@ export class TelephonyService {
           startTime: c.startTime.toISOString(),
           durationMinutes: c.durationMinutes,
         })),
+        externalCalendarBusy: externalBusy,
+        ...(externalBusy && conflicts.length === 0
+          ? { reason: "external_calendar_conflict", message: "The user has another commitment in their connected calendar at this time. Please suggest another time." }
+          : {}),
       };
     }
 
@@ -1509,6 +1526,43 @@ export class TelephonyService {
       });
 
       this.logger.log(`AI booked appointment id=${created.id} for businessId=${businessId} at ${startDate.toISOString()}.`);
+
+      // Push to external calendar (Microsoft) — fire and forget so booking
+      // never fails if external calendar is down.
+      this.logger.log(`[CAL] Attempting calendar push for appointment id=${created.id}, businessId=${businessId}`);
+      try {
+        const externalEvent = await this.calendarService.createEvent(
+          businessId,
+          {
+            title: created.title,
+            startTime: created.startTime,
+            durationMinutes: created.durationMinutes,
+            customerName: created.customerName,
+            customerPhone: created.customerPhone,
+            customerEmail: created.customerEmail,
+            serviceName: created.serviceName,
+            notes: created.notes,
+          },
+          businessForHours?.timezone || "America/Toronto",
+        );
+        if (externalEvent) {
+          await this.prisma.appointment.update({
+            where: { id: created.id },
+            data: {
+              externalCalendarProvider: "MICROSOFT",
+              externalEventId: externalEvent.eventId,
+              externalEventLink: externalEvent.webLink,
+            },
+          });
+          this.logger.log(`[CAL] ✅ Pushed appointment id=${created.id} to Microsoft Calendar. eventId=${externalEvent.eventId}`);
+        } else {
+          this.logger.warn(`[CAL] ❌ createEvent returned null for appointment id=${created.id}. Check token/connection.`);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `[CAL] ❌ Calendar push threw for appointment id=${created.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
 
       return {
         success: true,

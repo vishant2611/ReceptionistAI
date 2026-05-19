@@ -12,6 +12,8 @@ import { TelephonyController } from "./telephony/telephony.controller";
 import { TelephonyService } from "./telephony/telephony.service";
 import { AppointmentsController } from "./appointments/appointments.controller";
 import { AppointmentsService } from "./appointments/appointments.service";
+import { CalendarController } from "./calendar/calendar.controller";
+import { CalendarService } from "./calendar/calendar.service";
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { AppointmentsService } from "./appointments/appointments.service";
     BusinessesController,
     TelephonyController,
     AppointmentsController,
+    CalendarController,
   ],
   providers: [
     PrismaService,
@@ -34,6 +37,7 @@ import { AppointmentsService } from "./appointments/appointments.service";
     BusinessesService,
     TelephonyService,
     AppointmentsService,
+    CalendarService,
   ],
 })
 export class AppModule {}

@@ -61,6 +61,11 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum CalendarProvider {
+  MICROSOFT
+  GOOGLE
+}
+
 model User {
   id          String           @id @default(cuid())
   email       String           @unique
@@ -94,10 +99,11 @@ model Business {
   medicalModeEnabled Boolean             @default(false)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
-  members            BusinessMember[]
-  calls              Call[]
-  appointments       Appointment[]
-  subscription       Subscription?
+  members              BusinessMember[]
+  calls                Call[]
+  appointments         Appointment[]
+  calendarConnections  CalendarConnection[]
+  subscription         Subscription?
 }
 
 model BusinessMember {
@@ -134,21 +140,42 @@ model Call {
   appointments Appointment[]
 }
 
+model CalendarConnection {
+  id            String           @id @default(cuid())
+  businessId    String
+  provider      CalendarProvider
+  accountEmail  String
+  accountName   String?
+  accessToken   String           @db.Text
+  refreshToken String?          @db.Text
+  expiresAt     DateTime
+  scope         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, provider])
+}
+
 model Appointment {
-  id              String            @id @default(cuid())
-  businessId      String
-  callId          String?
-  title           String
-  customerName    String?
-  customerPhone   String?
-  customerEmail   String?
-  serviceName     String?
-  notes           String?
-  startTime       DateTime
-  durationMinutes Int               @default(30)
-  status          AppointmentStatus @default(SCHEDULED)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                       String            @id @default(cuid())
+  businessId               String
+  callId                   String?
+  title                    String
+  customerName             String?
+  customerPhone            String?
+  customerEmail            String?
+  serviceName              String?
+  notes                    String?
+  startTime                DateTime
+  durationMinutes          Int               @default(30)
+  status                   AppointmentStatus @default(SCHEDULED)
+  externalCalendarProvider CalendarProvider?
+  externalEventId          String?
+  externalEventLink        String?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   call     Call?    @relation(fields: [callId], references: [id], onDelete: SetNull)

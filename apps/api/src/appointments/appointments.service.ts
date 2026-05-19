@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { CalendarService } from "../calendar/calendar.service";
 import type {
   AppointmentCreateInput,
   AppointmentListQuery,
@@ -8,7 +9,10 @@ import type {
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly calendarService: CalendarService,
+  ) {}
 
   async listAppointments(businessId: string, query: AppointmentListQuery) {
     const where: Record<string, unknown> = { businessId };
@@ -88,6 +92,36 @@ export class AppointmentsService {
       },
     });
 
+    // Push to external calendar if connected
+    try {
+      const externalEvent = await this.calendarService.createEvent(
+        businessId,
+        {
+          title: appointment.title,
+          startTime: appointment.startTime,
+          durationMinutes: appointment.durationMinutes,
+          customerName: appointment.customerName,
+          customerPhone: appointment.customerPhone,
+          customerEmail: appointment.customerEmail,
+          serviceName: appointment.serviceName,
+          notes: appointment.notes,
+        },
+        business.timezone || "America/Toronto",
+      );
+      if (externalEvent) {
+        await this.prisma.appointment.update({
+          where: { id: appointment.id },
+          data: {
+            externalCalendarProvider: "MICROSOFT",
+            externalEventId: externalEvent.eventId,
+            externalEventLink: externalEvent.webLink,
+          },
+        });
+      }
+    } catch {
+      // Ignore — appointment still saved locally
+    }
+
     return { message: "Appointment created successfully.", appointment };
   }
 
@@ -129,6 +163,15 @@ export class AppointmentsService {
     });
     if (!existing) {
       throw new NotFoundException("Appointment not found.");
+    }
+
+    // Delete from external calendar if linked
+    if (existing.externalEventId) {
+      try {
+        await this.calendarService.deleteEvent(businessId, existing.externalEventId);
+      } catch {
+        // Ignore — proceed with local delete anyway
+      }
     }
 
     await this.prisma.appointment.delete({ where: { id: appointmentId } });

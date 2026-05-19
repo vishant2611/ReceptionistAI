@@ -6,7 +6,7 @@ import { clearSession } from "../../lib/session";
 import { PortalData } from "./use-portal-data";
 
 type PortalShellProps = {
-  active: "dashboard" | "profile" | "menu" | "refills" | "callbacks" | "settings" | "knowledge-base" | "appointments" | "telephony" | "calls" | "team" | "billing";
+  active: "dashboard" | "profile" | "menu" | "refills" | "callbacks" | "settings" | "knowledge-base" | "appointments" | "calendar-integration" | "telephony" | "calls" | "team" | "billing";
   title: string;
   subtitle: string;
   portal: PortalData;
@@ -60,6 +60,13 @@ export function PortalShell({ active, title, subtitle, portal, children }: Porta
       icon: "AP",
       href: `/portal/appointments?businessId=${businessId}`,
       visible: true,
+    },
+    {
+      key: "calendar-integration",
+      label: "Calendar Sync",
+      icon: "📧",
+      href: `/portal/calendar?businessId=${businessId}`,
+      visible: portal.canEditConfiguration,
     },
     {
       key: "calls",
