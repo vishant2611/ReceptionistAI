@@ -196,7 +196,7 @@ export const kbObjectionSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const leadCaptureFieldNameEnum = z.enum(["name", "phone", "businessName", "industry", "requirement"]);
+export const leadCaptureFieldNameEnum = z.enum(["name", "phone", "email", "businessName", "industry", "requirement"]);
 
 export const kbLeadCaptureQuestionSchema = z.object({
   id: z.string().min(1),

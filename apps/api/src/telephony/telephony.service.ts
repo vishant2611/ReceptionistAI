@@ -1847,7 +1847,7 @@ export class TelephonyService {
       "When the user says a duration like '1 hour' set durationMinutes to 60. '30 minutes' = 30. '90 minutes' or 'an hour and a half' = 90. Do NOT confuse hours and minutes.",
       "Booking titles must be SHORT — max 25 characters. Use the caller's first name plus 1-2 words for topic. Example: 'Call with John' or 'Demo — Sarah'. Put full names, company, and service details in the notes field, NEVER in the title. Long titles break the calendar layout.",
       "Default appointment duration is 30 minutes unless the caller indicates a longer need or the relevant service has its own duration mentioned in the knowledge base.",
-      "Before calling book_appointment, ensure you have collected the caller's name and phone number. Include them in the booking.",
+      "Before calling book_appointment, ensure you have collected the caller's name, phone number, AND email address. Include all three in the booking. The email is essential — without it, the caller will not receive the booking confirmation. If the caller hesitates to share email, explain: 'I just need it to send you the appointment confirmation and calendar invite.' Spell back the email address you heard to confirm.",
       "After successfully booking, read back the date, time, and duration to confirm with the caller, then wrap up the call politely.",
       "If the caller declines to book right now, still capture their lead info and offer to send them a follow-up. Do not pressure them.",
       // ────────────────────────────────────────────────────────────────────────

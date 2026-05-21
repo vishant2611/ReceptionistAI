@@ -15,6 +15,7 @@ type KbService = { id: string; serviceName: string; description: string; whoItsF
 const FIELD_NAME_OPTIONS = [
   { value: "name", label: "Caller Name" },
   { value: "phone", label: "Phone Number" },
+  { value: "email", label: "Email Address" },
   { value: "businessName", label: "Business Name" },
   { value: "industry", label: "Industry" },
   { value: "requirement", label: "Requirement / Problem" },
