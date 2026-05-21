@@ -2255,6 +2255,13 @@ export class TelephonyService {
       await this.syncPharmacyWorkflowsFromCall(call.id);
       await this.generateStructuredCallSummary(call.id);
       this.logger.log(`Saved recording URL for callId=${call.id}.`);
+
+      // Send business notification email
+      try {
+        await this.emailService.sendBusinessCallSummary(call.id);
+      } catch (err) {
+        this.logger.warn(`[EMAIL] Business summary email failed (recording-complete by-business path): ${err instanceof Error ? err.message : String(err)}`);
+      }
     } else {
       this.logger.warn(
         `Twilio recording callback could not find a matching call for businessId=${businessId}, CallSid=${payload.CallSid || "unknown"}.`,

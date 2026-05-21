@@ -18,6 +18,11 @@ type ResendSendPayload = {
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
+  // In-memory cache so we don't send duplicate business summary emails when
+  // both the WebSocket "stop" event AND the Twilio recording-complete webhook
+  // trigger for the same call. Cleared on server restart (acceptable trade-off).
+  private readonly sentBusinessSummaryCalls = new Set<string>();
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ── Generic send ──────────────────────────────────────────────────────────
@@ -56,6 +61,12 @@ export class EmailService {
 
   // ── Business Notification: After every call ──────────────────────────────
   async sendBusinessCallSummary(callId: string) {
+    if (this.sentBusinessSummaryCalls.has(callId)) {
+      this.logger.log(`[EMAIL] Business summary already sent for callId=${callId} — skipping duplicate.`);
+      return;
+    }
+    this.sentBusinessSummaryCalls.add(callId);
+
     const call = await this.prisma.call.findUnique({
       where: { id: callId },
       include: { business: true, appointments: true },
@@ -67,12 +78,16 @@ export class EmailService {
     }
 
     const business = call.business;
-    const toEmail = business.email || process.env.EMAIL_BUSINESS_NOTIFICATION_DEFAULT;
+    // EMAIL_BUSINESS_NOTIFICATION_DEFAULT (env var) takes priority as a
+    // platform-level override. Falls back to business.email if env not set.
+    const toEmail = process.env.EMAIL_BUSINESS_NOTIFICATION_DEFAULT || business.email;
 
     if (!toEmail) {
       this.logger.warn(`[EMAIL] No business email configured for businessId=${business.id}`);
       return;
     }
+
+    this.logger.log(`[EMAIL] Preparing business summary to=${toEmail} businessId=${business.id} callId=${call.id}`);
 
     const fromAddress = process.env.EMAIL_FROM_ADDRESS || "Receptionist AI <onboarding@resend.dev>";
     const subject = `New AI call: ${call.callerName || "Unknown caller"} ${call.callerNumber ? `(${call.callerNumber})` : ""}`;
