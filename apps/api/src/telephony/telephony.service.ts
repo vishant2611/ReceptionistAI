@@ -3,6 +3,7 @@ import { CallStatus } from "@prisma/client";
 import { URL } from "node:url";
 import { PrismaService } from "../prisma/prisma.service";
 import { CalendarService } from "../calendar/calendar.service";
+import { EmailService } from "../email/email.service";
 import WebSocket from "ws";
 
 type TwilioInboundPayload = {
@@ -1258,6 +1259,7 @@ export class TelephonyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly calendarService: CalendarService,
+    private readonly emailService: EmailService,
   ) {}
 
   private async findBusinessByTwilioNumber(twilioNumber: string | null | undefined) {
@@ -1562,6 +1564,13 @@ export class TelephonyService {
         this.logger.warn(
           `[CAL] ❌ Calendar push threw for appointment id=${created.id}: ${err instanceof Error ? err.message : String(err)}`,
         );
+      }
+
+      // Send customer confirmation email (if email was collected)
+      try {
+        await this.emailService.sendCustomerAppointmentConfirmation(created.id);
+      } catch (err) {
+        this.logger.warn(`[EMAIL] Customer confirmation failed: ${err instanceof Error ? err.message : String(err)}`);
       }
 
       return {
@@ -2539,6 +2548,15 @@ export class TelephonyService {
       if (endedAt) {
         await this.syncPharmacyWorkflowsFromCall(currentCallId);
         await this.generateStructuredCallSummary(currentCallId);
+
+        // Send business notification email (after summary is finalized)
+        try {
+          await this.emailService.sendBusinessCallSummary(currentCallId);
+        } catch (err) {
+          this.logger.warn(
+            `[EMAIL] Business summary failed for callId=${currentCallId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
     };
 

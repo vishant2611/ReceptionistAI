@@ -14,6 +14,7 @@ import { AppointmentsController } from "./appointments/appointments.controller";
 import { AppointmentsService } from "./appointments/appointments.service";
 import { CalendarController } from "./calendar/calendar.controller";
 import { CalendarService } from "./calendar/calendar.service";
+import { EmailService } from "./email/email.service";
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { CalendarService } from "./calendar/calendar.service";
     TelephonyService,
     AppointmentsService,
     CalendarService,
+    EmailService,
   ],
 })
 export class AppModule {}
