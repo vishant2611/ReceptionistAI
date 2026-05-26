@@ -353,7 +353,7 @@ function renderCustomerConfirmationHtml(data: {
           </tr>
           <tr>
             <td style="padding: 6px 0; color: #6b7280; font-size: 13px;">🌐 Timezone</td>
-            <td style="padding: 6px 0; font-weight: 600; text-align: right;">${escapeHtml(data.businessTimezone)}</td>
+            <td style="padding: 6px 0; font-weight: 600; text-align: right;">${escapeHtml(friendlyTimezoneName(data.businessTimezone))}</td>
           </tr>
         </table>
         ${data.notes ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;"><div style="font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">Notes</div><p style="margin: 4px 0 0; color: #374151; line-height: 1.55;">${escapeHtml(data.notes)}</p></div>` : ""}
@@ -424,6 +424,30 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// Maps IANA timezone identifiers to friendly display names for emails.
+function friendlyTimezoneName(timezone: string): string {
+  const map: Record<string, string> = {
+    "America/Toronto": "Eastern Time",
+    "America/New_York": "Eastern Time",
+    "America/Detroit": "Eastern Time",
+    "America/Montreal": "Eastern Time",
+    "America/Chicago": "Central Time",
+    "America/Winnipeg": "Central Time",
+    "America/Denver": "Mountain Time",
+    "America/Edmonton": "Mountain Time",
+    "America/Phoenix": "Mountain Time (Arizona)",
+    "America/Los_Angeles": "Pacific Time",
+    "America/Vancouver": "Pacific Time",
+    "America/Halifax": "Atlantic Time",
+    "America/St_Johns": "Newfoundland Time",
+    "America/Anchorage": "Alaska Time",
+    "Pacific/Honolulu": "Hawaii Time",
+    "Europe/London": "UK Time",
+    "Asia/Kolkata": "India Time",
+  };
+  return map[timezone] || timezone;
 }
 
 function formatDateTime(d: Date, timezone: string = "America/Toronto"): string {
