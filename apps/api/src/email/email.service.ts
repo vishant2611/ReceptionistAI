@@ -98,6 +98,7 @@ export class EmailService {
 
     const html = renderBusinessSummaryHtml({
       businessName: business.name,
+      timezone: business.timezone || "America/Toronto",
       callerName: call.callerName,
       callerNumber: call.callerNumber,
       callerEmail: call.callerEmail,
@@ -206,6 +207,7 @@ export class EmailService {
 
 function renderBusinessSummaryHtml(data: {
   businessName: string;
+  timezone: string;
   callerName: string | null;
   callerNumber: string | null;
   callerEmail: string | null;
@@ -231,7 +233,7 @@ function renderBusinessSummaryHtml(data: {
             (a) => `
           <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px;">
             <strong>${escapeHtml(a.title)}</strong><br/>
-            <span style="color: #6b7280; font-size: 13px;">${formatDateTime(a.startTime)} · ${a.durationMinutes} min</span>
+            <span style="color: #6b7280; font-size: 13px;">${formatDateTime(a.startTime, data.timezone)} · ${a.durationMinutes} min</span>
             ${a.externalEventLink ? `<br/><a href="${a.externalEventLink}" style="color: #2f55d4; font-size: 13px;">View in Outlook →</a>` : ""}
           </div>`,
           )
@@ -265,7 +267,7 @@ function renderBusinessSummaryHtml(data: {
         ${data.callerEmail ? `<tr><td style="padding: 6px 0; color: #6b7280; font-size: 13px;">Email</td><td style="padding: 6px 0; font-weight: 600; text-align: right;">${escapeHtml(data.callerEmail)}</td></tr>` : ""}
         <tr>
           <td style="padding: 6px 0; color: #6b7280; font-size: 13px;">Started</td>
-          <td style="padding: 6px 0; font-weight: 600; text-align: right;">${formatDateTime(data.startedAt)}</td>
+          <td style="padding: 6px 0; font-weight: 600; text-align: right;">${formatDateTime(data.startedAt, data.timezone)}</td>
         </tr>
       </table>
 
@@ -343,7 +345,7 @@ function renderCustomerConfirmationHtml(data: {
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
             <td style="padding: 6px 0; color: #6b7280; font-size: 13px;">📅 Date & Time</td>
-            <td style="padding: 6px 0; font-weight: 600; text-align: right;">${formatDateTime(data.startTime)}</td>
+            <td style="padding: 6px 0; font-weight: 600; text-align: right;">${formatDateTime(data.startTime, data.businessTimezone)}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; color: #6b7280; font-size: 13px;">⏱️ Duration</td>
@@ -424,7 +426,7 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function formatDateTime(d: Date): string {
+function formatDateTime(d: Date, timezone: string = "America/Toronto"): string {
   return new Date(d).toLocaleString("en-US", {
     weekday: "short",
     month: "short",
@@ -433,5 +435,7 @@ function formatDateTime(d: Date): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZone: timezone,
+    timeZoneName: "short",
   });
 }
